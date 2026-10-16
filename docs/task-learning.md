@@ -54,8 +54,9 @@ Use `R1H_PANEL_PORT=8090` to change the launcher port (and match the SSH tunnel)
 panel options after the mode. The underlying CLI option is
 `--task-renderer auto|glfw|egl|osmesa`; the choice applies only to the isolated task process.
 `auto` preserves any existing `MUJOCO_GL` environment setting. Restart the panel to change
-rendering backend. Local rendering has been exercised on macOS; the actual lab server
-still needs a graphics/startup check once its host and environment are available.
+rendering backend. Local rendering has been exercised on macOS. The lab deployment on
+[iceberg](lab-server.md) has also passed headless EGL rendering, all 47 Python tests,
+and the browser task recording/download checks.
 
 ## Start and collect
 

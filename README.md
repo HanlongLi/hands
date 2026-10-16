@@ -147,3 +147,6 @@ is needed. The built-in example is labeled as scripted data.
 Run `scripts/run_task_panel.sh local` on the MacBook, or `scripts/run_task_panel.sh server`
 on a headless Linux lab server and connect through an SSH tunnel. See the
 [local/server setup](docs/task-learning.md#local-and-lab-server-options) for GPU and CPU rendering options.
+
+The lab deployment is running on **iceberg (192.168.34.39)** with headless EGL on GPU 1.
+See [lab-server access and operation](docs/lab-server.md) for the SSH tunnel and process controls.
