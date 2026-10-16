@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import io
 import time
 import webbrowser
 from pathlib import Path
@@ -47,7 +48,9 @@ def _server_sides(ws_url: str) -> list[str] | None:
 
 
 class Panel:
-    def __init__(self, backend: str, remote: str | None, sides=("left", "right")):
+    def __init__(self, backend: str, remote: str | None, sides=("left", "right"), mapping_model=None):
+        from r1hands.data.mapping import load_model
+        model = load_model(mapping_model) if mapping_model is not None else None
         cfg = load_config()
         self.backend = backend
         if backend == "remote":  # show only the hands the server actually serves
@@ -73,7 +76,7 @@ class Panel:
         self.teleop_t = 0.0
         self.teleop_metrics = {}
         self.thumb_calibrated = {s: False for s in sides}
-        self.preview = HandPreview()
+        self.preview = HandPreview(model)
         self.rec: dict | None = None
         self.log: list[str] = []
 
@@ -283,6 +286,18 @@ def make_app(panel: Panel):
     async def index(_):
         return web.FileResponse(STATIC / "index.html")
 
+    async def mapping_export(request):
+        from r1hands.data.mapping import convert_clip
+        try:
+            clip = await request.json()
+            arrays = await asyncio.to_thread(convert_clip, clip)
+            output = io.BytesIO()
+            await asyncio.to_thread(np.savez_compressed, output, **arrays)
+            return web.Response(body=output.getvalue(), content_type="application/octet-stream",
+                                headers={"Content-Disposition": 'attachment; filename="right-hand-mapping.npz"'})
+        except (ValueError, TypeError, KeyError, OverflowError) as error:
+            raise web.HTTPBadRequest(text=str(error)) from error
+
     async def preview_model(_):
         return web.json_response(hand_model())
 
@@ -336,13 +351,14 @@ def make_app(panel: Panel):
             await asyncio.gather(task, return_exceptions=True)
             panel._record(False)
 
-    app = web.Application()
+    app = web.Application(client_max_size=20 * 1024 * 1024)
     app.cleanup_ctx.append(recording_lifecycle)
     app.router.add_get("/", index)
     app.router.add_get("/ws", ws_handler)
     app.router.add_get("/preview/model", preview_model)
     app.router.add_get("/preview/meshes/{name}", preview_mesh)
     app.router.add_get("/preview/example", example)
+    app.router.add_post("/mapping/export", mapping_export)
     app.router.add_static("/static", STATIC)
     return app
 
@@ -355,8 +371,9 @@ def main():
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--sides", default="left,right")
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--mapping-model", type=Path, help="Learned mapping NPZ for the read-only preview; motor control remains analytic")
     a = ap.parse_args()
-    panel = Panel(a.backend, a.remote, tuple(a.sides.split(",")))
+    panel = Panel(a.backend, a.remote, tuple(a.sides.split(",")), mapping_model=a.mapping_model)
     if not a.no_browser:
         webbrowser.open(f"http://localhost:{a.port}")
     try:

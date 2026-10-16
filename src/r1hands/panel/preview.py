@@ -12,6 +12,7 @@ from r1hands.common.robot_model import REPO
 from r1hands.common.types import HAND_JOINTS
 from r1hands.retarget.hand import HandRetargeter
 from r1hands.retarget.live import LiveHand
+from r1hands.data.mapping import mapper_from_profile, LearnedRetargeter
 from r1hands.sim.build_model import HAND_DRIVE, HAND_RANGE
 
 DESCRIPTION = REPO / 'assets' / 'revo2_description'
@@ -23,22 +24,18 @@ def profile(retarget):
 
 
 def validate_profile(value):
-    opened, closed = np.asarray(value['open'], float), np.asarray(value['closed'], float)
-    if (opened.shape != (6,) or closed.shape != (6,) or not np.isfinite(opened).all()
-            or not np.isfinite(closed).all() or (np.abs(closed - opened) < 0.01).any()
-            or (np.abs(opened) > 10).any() or (np.abs(closed) > 10).any()):
-        raise ValueError('Invalid six-axis retargeting calibration')
-    return HandRetargeter(open_feat=opened.copy(), fist_feat=closed.copy(), smooth=0)
+    return mapper_from_profile(value)
 
 
 class HandPreview:
     """Replay advances the filter on recorded sample time, independent of playback speed."""
-    def __init__(self):
+    def __init__(self, model=None):
+        self.model = model
         self.stream = None
         self.last_seq = -1
         self.last_sample = None
         self.signature = None
-        self.live = LiveHand(HandRetargeter(smooth=0))
+        self.live = LiveHand(LearnedRetargeter(model) if model else HandRetargeter(smooth=0))
         self.target = np.zeros(6)
         self.source = 'idle'
         self.calibration = 'current'
@@ -58,7 +55,7 @@ class HandPreview:
         signature = (tuple(mapper.open_feat), tuple(mapper.fist_feat))
         stream = str(message['stream'])[:100]
         if stream != self.stream or signature != self.signature:
-            self.live = LiveHand(mapper)
+            self.live = LiveHand(LearnedRetargeter(self.model) if self.model else mapper)
             if source == 'replay':
                 self.target = np.zeros(6)
             self.stream, self.signature = stream, signature
@@ -82,7 +79,8 @@ class HandPreview:
         if self.source == 'live' and time.monotonic() - self.last_received > 0.25:
             status = 'held'
         return {'target': self.target.tolist(), 'status': status,
-                'source': self.source, 'seq': self.last_seq, 'calibration': self.calibration}
+                'source': self.source, 'seq': self.last_seq, 'calibration': self.calibration, 'stream': self.stream,
+                'mapper': 'learned baseline (preview only)' if self.model else 'analytic v1'}
 
 
 def _origin(element):

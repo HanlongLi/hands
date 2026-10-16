@@ -3,6 +3,10 @@
   const pageId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   let lastStats = [];
   const $ = id => document.getElementById(id);
+  function leaveReview() {
+    $('preview-mode').value = 'mapping';
+    window.dispatchEvent(new CustomEvent('r1hands-review-reset'));
+  }
   function message(text) { $('clip-status').textContent = text; }
   function stopRecording() {
     if (!recorder) return;
@@ -21,7 +25,7 @@
   }
   function install(value) {
     const validated = LandmarkClip.validate(value);
-    stopRecording(); pause();
+    stopRecording(); pause(); leaveReview();
     clip = validated; playback = new LandmarkClip.Playback(clip);
     message(`${clip.synthetic ? 'Synthetic example · ' : ''}${clip.frames.length} frames · ${(clip.frames.at(-1).t / 1000).toFixed(1)} s`);
     $('clip-progress').max = clip.frames.length - 1; $('clip-progress').value = 0;
@@ -39,7 +43,8 @@
       $('landmark-record').onclick = () => {
         if (recorder) { stopRecording(); return; }
         if (!hooks.cameraOn()) { message('Start the camera before recording landmarks.'); return; }
-        pause(); recorder = new LandmarkClip.Recorder(hooks.state().retarget_profile, $('swap').checked);
+        pause(); leaveReview(); recorder = new LandmarkClip.Recorder(hooks.state().retarget_profile, $('swap').checked);
+        recorder.clip.metadata = {operator_id: $('mapping-operator').value.trim(), session_id: $('mapping-session').value.trim()};
         $('landmark-record').textContent = 'Stop landmark recording'; message('Recording raw landmarks, including tracking gaps · maximum 2 min');
       };
       $('clip-download').onclick = () => { stopRecording(); download(); };
@@ -64,16 +69,15 @@
         if (!playback) { message('Record, import, or load an example first.'); return; }
         if (playback.playing) { pause(); return; }
         if (!hooks.connected()) { message('Wait for the panel connection before replaying.'); return; }
-        hooks.stopCamera();
-        $('preview-mode').value = 'mapping';
+        hooks.stopCamera(); leaveReview();
         if (playback.index === playback.clip.frames.length) playback.rewind();
         if (playback.index === 0) stream++;
         playback.play(performance.now());
         $('clip-play').textContent = 'Pause replay';
         message('Replaying landmarks into the 3D preview only · no motor commands');
       };
-      $('clip-rewind').onclick = () => { pause(); if (playback) {playback.rewind(); stream++;} $('clip-progress').value = 0; };
-      $('clip-profile').onchange = () => { pause(); if (playback) {playback.rewind(); stream++;} };
+      $('clip-rewind').onclick = () => { pause(); leaveReview(); if (playback) {playback.rewind(); stream++;} $('clip-progress').value = 0; };
+      $('clip-profile').onchange = () => { pause(); leaveReview(); if (playback) {playback.rewind(); stream++;} };
       document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
       window.addEventListener('r1hands-state', ({detail}) => {
         const target = detail.preview?.target;
@@ -113,6 +117,31 @@
     },
     stopRecording,
     pause,
+    getClip: () => clip,
+    leaveReview,
+    reviewFrame() {
+      const index = playback ? playback.index - 1 : -1;
+      const shown = hooks.state()?.preview;
+      if (!clip || !playback || playback.playing || index < 0 || shown?.source !== 'replay'
+          || shown.seq !== index || shown.stream !== `replay-${pageId}-${stream}`)
+        throw new Error('Replay a clip, pause it, then wait for that frame to appear before editing.');
+      return {index, target: shown.target.slice()};
+    },
+    step() {
+      stopRecording(); pause(); leaveReview();
+      if (!playback) { message('Load or record a clip first.'); return; }
+      hooks.stopCamera();
+      if (playback.index === playback.clip.frames.length) { message('End of clip; rewind to start again.'); return; }
+      if (playback.index === 0) stream++;
+      const index = playback.index++, frame = clip.frames[index];
+      hooks.replay({timestamp: frame.t, hands: frame.hands, inference_ms: frame.inference_ms}, {
+        source: 'replay', stream: `replay-${pageId}-${stream}`, index, swap: clip.swap,
+        profile: $('clip-profile').checked ? clip.profile : undefined,
+      });
+      playback.elapsed = frame.t;
+      $('clip-progress').value = index; $('clip-progress').max = clip.frames.length - 1;
+      message(`Paused at frame ${index} · ${(frame.t / 1000).toFixed(2)} s`);
+    },
     isReplaying: () => !!playback?.playing,
   };
 })();

@@ -5,3 +5,5 @@ logs/
 .pytest_cache/
 assets/r1_revo2/_tmp*
 .deploy_cache/
+datasets/
+models/

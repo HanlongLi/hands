@@ -27,6 +27,7 @@ dev = ["pytest>=8"]
 r1h-panel = "r1hands.panel.app:main"
 r1h-hand-server = "r1hands.panel.hand_server:main"
 r1h-cap = "r1hands.policies.cap.agent:main"
+r1h-mapping = "r1hands.data.mapping:main"
 
 [build-system]
 requires = ["hatchling"]

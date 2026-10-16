@@ -73,16 +73,23 @@ async function init() {
   });
   resize.observe(host);
   status.textContent = 'Revo2 model ready · drag to rotate · scroll to zoom';
-  let target = [0, 0, 0, 0, 0, 0], actual = target;
+  let target = [0, 0, 0, 0, 0, 0], actual = target, reviewTarget = null, reviewFrame = null;
+  window.addEventListener('r1hands-label', ({detail}) => {
+    reviewTarget = detail.position; reviewFrame = detail.frame;
+  });
+  window.addEventListener('r1hands-review-reset', () => { reviewTarget = null; reviewFrame = null; });
   window.addEventListener('r1hands-state', ({detail}) => {
     const preview = detail.preview;
-    const useMapping = document.getElementById('preview-mode').value === 'mapping';
+    const mode = document.getElementById('preview-mode').value;
+    const useMapping = mode === 'mapping';
     target = useMapping && preview ? preview.target : (detail.hands.right?.target || target);
+    if (mode === 'review' && reviewTarget) target = reviewTarget;
     actual = detail.hands.right?.position || target;
     document.getElementById('preview-values').textContent = target.map((v, i) => `${['thumb', 'rotation', 'index', 'middle', 'ring', 'pinky'][i]} ${v.toFixed(2)}`).join(' · ');
     document.getElementById('preview-state').textContent = useMapping && preview
-      ? `${preview.source} · ${preview.status} · ${preview.calibration === 'recorded' ? 'recorded calibration' : (detail.calibrated.right ? 'current calibration' : 'default calibration')}`
+      ? `${preview.source} · ${preview.status} · ${preview.mapper || 'analytic v1'} · ${preview.mapper?.startsWith('learned') ? 'calibration handled by trained weights' : (preview.calibration === 'recorded' ? 'recorded calibration' : (detail.calibrated.right ? 'current calibration' : 'default calibration'))}`
       : `panel target · ${detail.conn.backend}`;
+    if (mode === 'review' && reviewTarget) document.getElementById('preview-state').textContent = `Operator label · frame ${reviewFrame} · preview only`;
     renderer.domElement.dataset.pose = JSON.stringify(target);
   });
   function draw() {

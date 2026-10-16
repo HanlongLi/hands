@@ -86,6 +86,10 @@ canvas { width: 100%; height: 170px; display: block; }
 .tele-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 @media (max-width: 760px) { .tele-grid { grid-template-columns: minmax(0, 1fr); } }
 .tele-grid > div { min-width: 0; }
+.mapping-lab { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 12px; }
+.mapping-lab summary { cursor: pointer; font-weight: 600; }
+.mapping-axis { display: grid; grid-template-columns: 85px minmax(0, 1fr) 42px; align-items: center; gap: 10px; margin-top: 8px; }
+.mapping-axis output { font-variant-numeric: tabular-nums; }
 .tele-controls { grid-column: 1 / -1; }
 #hand-preview { position: relative; aspect-ratio: 4/3; min-height: 260px; border-radius: 10px; overflow: hidden;
   background: radial-gradient(ellipse at 50% 40%, var(--surface-2), var(--track)); }
@@ -125,7 +129,7 @@ canvas { width: 100%; height: 170px; display: block; }
         <div id="hand-preview" aria-label="3D robot hand preview"></div>
         <p id="preview-model-status" class="muted preview-caption">Loading local Revo2 model…</p>
         <div class="row" style="margin-top:4px">
-          <label class="ctl">Show <select id="preview-mode"><option value="mapping">Mapped hand</option><option value="panel">Panel target</option></select></label>
+          <label class="ctl">Show <select id="preview-mode"><option value="mapping">Mapped hand</option><option value="panel">Panel target</option><option value="review">Operator label</option></select></label>
           <label class="ctl"><input type="checkbox" id="preview-measured"> Measured pose (amber)</label>
           <button id="preview-reset">Reset view</button>
         </div>
@@ -155,6 +159,24 @@ canvas { width: 100%; height: 170px; display: block; }
           <label class="ctl"><input type="checkbox" id="clip-profile" checked> Use recorded calibration</label>
           <progress id="clip-progress" value="0" max="1" aria-label="Landmark replay progress"></progress>
         </div>
+        <div class="row">
+          <label class="ctl">Operator ID <input id="mapping-operator" maxlength="200" placeholder="e.g. operator-01" size="16"></label>
+          <label class="ctl">Session ID <input id="mapping-session" maxlength="200" placeholder="e.g. session-01" size="16"></label>
+        </div>
+        <details id="mapping-lab" class="mapping-lab">
+          <summary>Mapping training data · label poses and export paired samples</summary>
+          <p class="muted">Pause a replay and edit a pose to add an operator-reviewed target. These are kinematic labels; collision checks are not available yet.</p>
+          <div class="row"><button id="mapping-step">Next frame</button><button id="mapping-edit">Edit paused pose</button>
+            <span id="mapping-frame" class="muted">No pose selected</span></div>
+          <div id="mapping-sliders"></div>
+          <div class="row">
+            <label class="ctl">Reviewer <input id="mapping-reviewer" maxlength="200" size="16" placeholder="your name or ID"></label>
+            <label class="ctl">Pose / note <input id="mapping-note" maxlength="500" size="24" placeholder="e.g. pinch, thumb adjusted"></label>
+          </div>
+          <div class="row"><button id="mapping-save" disabled>Save reviewed pose</button>
+            <button id="mapping-remove" disabled>Remove label</button><button id="mapping-export">Export mapping dataset</button></div>
+          <p id="mapping-status" class="muted">No labels yet. Raw analytic targets and reviewed corrections are stored separately.</p>
+        </details>
         <p id="clip-status" class="muted">Record up to 2 min of landmarks or load a synthetic example. Replay affects only the 3D preview.</p>
       </div>
     </div>
@@ -391,7 +413,7 @@ function stopCam() {
 }
 async function startCam() {
   const btn = document.getElementById("cam"); btn.textContent = "Loading model…"; btn.disabled = true;
-  if (window.DemoLab) window.DemoLab.pause();
+  if (window.DemoLab) { window.DemoLab.pause(); window.DemoLab.leaveReview(); }
   const session = ++cameraSession;
   try {
     worker = new Worker("/static/hand-worker.js");
@@ -488,6 +510,7 @@ document.getElementById("drive").onclick = () => {
 };
 document.getElementById("swap").onchange = () => {
   drivingTeleop = false; send({type: "teleop_arm", on: false});
+  if (window.DemoLab) window.DemoLab.stopRecording();
   for (const side of sides) send({type: "calib_reset", side});
 };
 document.addEventListener("visibilitychange", () => {
@@ -501,13 +524,17 @@ function buildCalib() {
       <button data-cr="${s}">Reset</button><span class="muted" id="cal-${s}"></span></div>`).join("");
   document.querySelectorAll("[data-c]").forEach(b => b.onclick = () => {
     if (!camOn) { alert("Start the camera first."); return; }
+    if (window.DemoLab) window.DemoLab.stopRecording();
     send({type: "teleop_arm", on: false});
     const [side, pose] = b.dataset.c.split(":");
     send({type: "calib_begin", side, pose});
     const capture = {side, pose}; capturing = capture; b.classList.add("on");
     setTimeout(() => { if (capturing === capture) capturing = null; b.classList.remove("on"); }, 1000);
   });
-  document.querySelectorAll("[data-cr]").forEach(b => b.onclick = () => send({ type: "calib_reset", side: b.dataset.cr }));
+  document.querySelectorAll("[data-cr]").forEach(b => b.onclick = () => {
+    if (window.DemoLab) window.DemoLab.stopRecording();
+    send({ type: "calib_reset", side: b.dataset.cr });
+  });
 }
 function updateCalib() {
   for (const s of sides) {
@@ -525,6 +552,7 @@ if (window.DemoLab) window.DemoLab.attach({
 connect();
 requestAnimationFrame(draw);
 </script>
+<script src="/static/mapping-lab.js"></script>
 <script type="module" src="/static/hand-preview.js"></script>
 </body>
 </html>

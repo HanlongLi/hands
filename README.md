@@ -130,3 +130,7 @@ The panel also includes a [hardware-free mapping lab](docs/offline-hand-demo.md)
 3D Revo2 preview beside the webcam, raw landmark clip recording/import/download, and preview-only
 replay with recorded or current calibration. Start with **Load example → Replay in preview**;
 no camera or hardware is needed for the example.
+
+[Mapping training](docs/mapping-training.md) adds paused-frame pose review, synchronized NPZ
+exports with quality masks and label provenance, grouped baseline training/evaluation, and a
+`--mapping-model` option for inspecting learned predictions in the read-only 3D preview.

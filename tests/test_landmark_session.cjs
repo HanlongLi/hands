@@ -34,3 +34,11 @@ assert.throws(()=>validate({...restored,profile:{open:[0,0,0,0,0,0],closed:[0,0,
 assert.throws(()=>validate({...restored,frames:[{t:0,hands:[{...hands[0],score:NaN}]}]}));
 assert.equal(recorder.add({timestamp:121001,hands,inference_ms:10}),false);
 console.log('Landmark recording, validation, dropout preservation and timed replay passed');
+
+const annotated = JSON.parse(JSON.stringify(restored));
+annotated.annotations = [{frame_index:0,position:[0,0,0.5,0,0,0],reviewer:'tester',note:'pinch'}];
+annotated.metadata = {operator_id:'operator-01',session_id:'session-01'};
+assert.equal(validate(annotated).annotations.length,1);
+assert.throws(()=>validate({...annotated,annotations:[...annotated.annotations,...annotated.annotations]}));
+assert.throws(()=>validate({...annotated,annotations:[{frame_index:99,position:[0,0,0,0,0,0]}]}));
+assert.throws(()=>validate({...annotated,annotations:[{frame_index:0,position:[0,0,2,0,0,0]}]}));

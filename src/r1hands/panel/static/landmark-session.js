@@ -29,6 +29,19 @@
           throw new Error('Expected 21 image landmarks');
       }
     }
+    const annotations = clip.annotations || [];
+    if (!Array.isArray(annotations) || annotations.length > clip.frames.length) throw new Error('Invalid pose annotations');
+    const seen = new Set();
+    for (const label of annotations) {
+      if (!Number.isInteger(label.frame_index) || label.frame_index < 0 || label.frame_index >= clip.frames.length || seen.has(label.frame_index)
+          || !Array.isArray(label.position) || label.position.length !== 6 || !label.position.every(v => Number.isFinite(v) && v >= 0 && v <= 1))
+        throw new Error('Pose annotations need unique frame indices and six targets in [0,1]');
+      seen.add(label.frame_index);
+      for (const field of ['note', 'reviewer']) if (label[field] !== undefined && (typeof label[field] !== 'string' || label[field].length > 500))
+        throw new Error('Invalid annotation text');
+    }
+    if (clip.metadata !== undefined && (!clip.metadata || Array.isArray(clip.metadata) || typeof clip.metadata !== 'object'
+        || !Object.values(clip.metadata).every(v => typeof v === 'string' && v.length <= 200))) throw new Error('Invalid clip metadata');
     return clip;
   }
   class Recorder {
