@@ -34,7 +34,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/r1hands"]
-artifacts = ["src/r1hands/panel/static/*"]
+artifacts = ["src/r1hands/panel/static/*", "src/r1hands/panel/static/**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -355,7 +355,7 @@ async function startCam() {
   try {
     worker = new Worker("/static/hand-worker.js");
     await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error("Model loading timed out. Check internet access.")), 30000);
+      const timer = setTimeout(() => reject(new Error("Local model loading timed out. Restart the panel and reload the page.")), 30000);
       worker.onerror = event => { clearTimeout(timer); reject(new Error(event.message)); };
       worker.onmessage = ({data}) => { clearTimeout(timer); data.type === "ready" ? resolve() : reject(new Error(data.error)); };
       worker.postMessage({type: "init"});

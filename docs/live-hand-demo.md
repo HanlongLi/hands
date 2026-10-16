@@ -2,10 +2,16 @@
 
 This demo uses the MacBook camera to drive the robot's **right Revo2 hand**. Camera images
 stay in the browser; only 21 3D landmarks per detected hand leave it for the local Python panel.
-Tracking uses a pinned MediaPipe Tasks Vision 0.10.14 model in a Web Worker. The initial
-model/WASM download requires internet access to jsDelivr and Google Storage. This release
-has automated mock/simulation and WebSocket checks; the webcam, real-hand mapping and
-physical latency still require the bench evaluation below.
+Tracking uses pinned MediaPipe Tasks Vision 0.10.14 in a Web Worker. The JavaScript, WASM
+and hand model are included in the repository and served by the local panel: **camera startup
+needs no CDN or internet access**. `python scripts/fetch_vision_assets.py` reproduces the assets
+from the pinned npm archive and Google model with integrity checks (this maintenance step
+requires internet). Third-party license and source information is in
+`src/r1hands/panel/static/vendor/mediapipe/NOTICE.md`.
+
+Automated checks cover mock/simulation, WebSocket behavior and model startup/inference in
+Chrome with a synthetic camera. Real-hand mapping, camera accuracy and physical latency
+still require the bench evaluation below.
 
 ## Run
 
@@ -132,3 +138,17 @@ The Python suite includes real localhost WebSocket transport, packet deadlines, 
 reacquisition, right-only mapping, ownership, calibration rejection, rigid-transform invariance,
 filter response, stale telemetry and measured-pose hold behavior. The JavaScript contract test
 uses mocked DOM/transport objects; it does not run MediaPipe or obtain camera permissions.
+
+To reproduce the real Chrome startup regression, install `playwright-core` into a temporary
+location and run the smoke test against a separately started mock panel:
+
+```sh
+# Terminal 1
+.venv/bin/r1h-panel --backend mock --sides right --no-browser --port 8097
+# Terminal 2 (requires Chrome; uses a synthetic camera, no real camera access)
+npm install --prefix /tmp/r1hands-browser-test playwright-core
+NODE_PATH=/tmp/r1hands-browser-test/node_modules node tests/webcam_browser_smoke.cjs
+```
+
+This test blocks external HTTP requests and requires model initialization plus three actual
+inference frames. It checks runtime loading, not landmark accuracy on human hands.

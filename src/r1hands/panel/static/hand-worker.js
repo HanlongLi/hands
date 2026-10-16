@@ -1,15 +1,18 @@
 // Inference stays off the UI thread. The caller sends at most one frame at a time.
-const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+const MP = "/static/vendor/mediapipe";
 let detector;
 self.onmessage = async ({data}) => {
   if (data.type === "init") {
     try {
+      // The pinned npm package ships CommonJS and ESM, not vision_bundle.js.
+      // A classic worker is required by its WASM loader's importScripts path.
+      self.exports = {};
       importScripts(`${MP}/vision_bundle.js`);
-      const {FilesetResolver, HandLandmarker} = vision;
+      const {FilesetResolver, HandLandmarker} = self.exports;
       const files = await FilesetResolver.forVisionTasks(`${MP}/wasm`);
       detector = await HandLandmarker.createFromOptions(files, {
         baseOptions: {
-          modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+          modelAssetPath: `${MP}/hand_landmarker.task`,
           delegate: "CPU",
         },
         runningMode: "VIDEO", numHands: 2,
