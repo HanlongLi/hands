@@ -125,3 +125,8 @@ thumb-pinch calibration, adaptive smoothing, explicit arm/disarm, tracking-loss 
 network commands. Start locally with `r1h-panel --backend mock --sides right`.
 See [the demo guide](docs/live-hand-demo.md) for operation, timing semantics, hardware validation,
 and acceptance targets. Camera accuracy and physical response latency still need bench measurement.
+
+The panel also includes a [hardware-free mapping lab](docs/offline-hand-demo.md): a rotatable
+3D Revo2 preview beside the webcam, raw landmark clip recording/import/download, and preview-only
+replay with recorded or current calibration. Start with **Load example → Replay in preview**;
+no camera or hardware is needed for the example.

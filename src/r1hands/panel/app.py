@@ -27,6 +27,7 @@ from r1hands.common.types import HAND_JOINTS, N_HAND
 from r1hands.control.skills import GRASPS
 from r1hands.hal.factory import load_config, make_robot
 from r1hands.panel.runner import HandRunner
+from r1hands.panel.preview import HandPreview, MESH_DIR, example_clip, hand_model, profile
 from r1hands.retarget.hand import HandRetargeter
 from r1hands.retarget.live import LiveHand, validate_landmarks
 
@@ -72,6 +73,7 @@ class Panel:
         self.teleop_t = 0.0
         self.teleop_metrics = {}
         self.thumb_calibrated = {s: False for s in sides}
+        self.preview = HandPreview()
         self.rec: dict | None = None
         self.log: list[str] = []
 
@@ -97,6 +99,11 @@ class Panel:
 
     def handle(self, m: dict, owner=None):
         t = m["type"]
+        if t == "preview":
+            if m.get("source") == "replay" and self.teleop_armed:
+                raise ValueError("Disarm live control before preview replay")
+            self.preview.update(m, profile(self.retarget.get("right", HandRetargeter())))
+            return
         if t == "teleop_arm":
             if m.get("on"):
                 if self.teleop_armed and owner is not self.teleop_owner:
@@ -257,7 +264,9 @@ class Panel:
         if self.link is not None:
             snap["error"] = snap["error"] or self.link.state.get("error")
             conn.update(ok=self.link.connected and time.monotonic() - self.link.last_rx < 0.3, rate=self.link.rate_hz, rtt_ms=self.link.rtt_ms)
-        return {**snap, "panel_time": time.monotonic(), "teleop_armed": self.teleop_armed,
+        return {**snap, "preview": self.preview.snapshot(),
+                "retarget_profile": profile(self.retarget.get("right", HandRetargeter())),
+                "panel_time": time.monotonic(), "teleop_armed": self.teleop_armed,
                 "tracking": {s: (v.status if v.last_t is not None and time.monotonic() - v.last_t < 0.25
                                  else "waiting") for s, v in self.live.items()},
                 "teleop_metrics": self.teleop_metrics, "thumb_calibrated": self.thumb_calibrated,
@@ -273,6 +282,19 @@ def make_app(panel: Panel):
 
     async def index(_):
         return web.FileResponse(STATIC / "index.html")
+
+    async def preview_model(_):
+        return web.json_response(hand_model())
+
+    async def preview_mesh(request):
+        name = request.match_info["name"]
+        allowed = {Path(v["mesh"]).name for link in hand_model()["links"] for v in link["visuals"]}
+        if name not in allowed:
+            raise web.HTTPNotFound()
+        return web.FileResponse(MESH_DIR / name)
+
+    async def example(_):
+        return web.json_response(example_clip())
 
     async def ws_handler(request):
         ws = web.WebSocketResponse(heartbeat=5.0)
@@ -318,6 +340,9 @@ def make_app(panel: Panel):
     app.cleanup_ctx.append(recording_lifecycle)
     app.router.add_get("/", index)
     app.router.add_get("/ws", ws_handler)
+    app.router.add_get("/preview/model", preview_model)
+    app.router.add_get("/preview/meshes/{name}", preview_mesh)
+    app.router.add_get("/preview/example", example)
     app.router.add_static("/static", STATIC)
     return app
 

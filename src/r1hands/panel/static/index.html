@@ -83,8 +83,17 @@ canvas { width: 100%; height: 170px; display: block; }
 .tip div { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
 #teleop { grid-column: 1 / -1; }
-.tele-grid { display: grid; grid-template-columns: minmax(240px, 420px) 1fr; gap: 16px; align-items: start; }
-@media (max-width: 760px) { .tele-grid { grid-template-columns: 1fr; } }
+.tele-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .tele-grid { grid-template-columns: minmax(0, 1fr); } }
+.tele-grid > div { min-width: 0; }
+.tele-controls { grid-column: 1 / -1; }
+#hand-preview { position: relative; aspect-ratio: 4/3; min-height: 260px; border-radius: 10px; overflow: hidden;
+  background: radial-gradient(ellipse at 50% 40%, var(--surface-2), var(--track)); }
+#hand-preview canvas { width: 100%; height: 100%; touch-action: none; }
+.preview-caption { min-height: 20px; margin: 6px 0; }
+#clip-progress { width: min(280px, 100%); }
+.ctl input[type="file"] { max-width: 220px; min-width: 0; }
+#preview-values { font-variant-numeric: tabular-nums; }
 .video { position: relative; background: #000; border-radius: 10px; overflow: hidden; aspect-ratio: 4/3; }
 .video video, .video canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 #log { grid-column: 1 / -1; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-secondary); max-height: 180px; overflow: auto; }
@@ -108,24 +117,53 @@ canvas { width: 100%; height: 170px; display: block; }
     <div class="card-head"><h2>Webcam teleop</h2>
       <span id="tele-status" class="pill"><span class="dot"></span><span>off</span></span></div>
     <div class="tele-grid">
-      <div class="video"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
       <div>
+        <div class="video"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
+        <p class="muted preview-caption">Human hand · webcam or recorded landmarks</p>
+      </div>
+      <div>
+        <div id="hand-preview" aria-label="3D robot hand preview"></div>
+        <p id="preview-model-status" class="muted preview-caption">Loading local Revo2 model…</p>
+        <div class="row" style="margin-top:4px">
+          <label class="ctl">Show <select id="preview-mode"><option value="mapping">Mapped hand</option><option value="panel">Panel target</option></select></label>
+          <label class="ctl"><input type="checkbox" id="preview-measured"> Measured pose (amber)</label>
+          <button id="preview-reset">Reset view</button>
+        </div>
+        <p id="preview-state" class="muted">Preview only · no camera movement sent to motors until armed</p>
+        <p id="preview-values" class="muted"></p>
+        <p id="preview-jitter" class="muted">Target variation: waiting</p>
+      </div>
+      <div class="tele-controls">
         <div class="row" style="margin-top:0">
           <button id="cam">Start camera</button>
           <button id="drive">Arm right-hand demo</button>
           <label class="ctl"><input type="checkbox" id="swap"> Swap left/right</label>
         </div>
-        <p class="muted">Right-hand demo: show your right palm and confirm the overlay says “right”. Use Swap if needed. The preview is mirrored.
+        <p class="muted">The 3D preview follows the camera without arming; calibration improves its mapping. Right-hand demo: show your right palm and confirm the overlay says “right”. Use Swap if needed. The preview is mirrored.
           Calibrate each hand once: hold it fully open and press “open”, then make a fist and press “fist”
           (each captures 1 s of frames). Capture a thumb–index pinch to tune thumb bend and opposition separately. Keep the full hand visible. Three valid frames acquire tracking; tracking loss holds the measured pose within 250 ms on the Mac. Space stops and disarms. Finger spread and wrist motion are not reproduced.</p>
         <p id="tele-metrics" class="muted">Tracking: waiting · inference: — · frame age: — · panel RTT: —</p>
         <div id="calib"></div>
+        <div class="row">
+          <button id="landmark-record">Record landmarks</button>
+          <button id="clip-download">Download clip</button>
+          <label class="ctl">Import clip <input id="clip-load" type="file" accept="application/json,.json"></label>
+          <button id="clip-example">Load example</button>
+        </div>
+        <div class="row">
+          <button id="clip-play">Replay in preview</button><button id="clip-rewind">Rewind</button>
+          <label class="ctl"><input type="checkbox" id="clip-profile" checked> Use recorded calibration</label>
+          <progress id="clip-progress" value="0" max="1" aria-label="Landmark replay progress"></progress>
+        </div>
+        <p id="clip-status" class="muted">Record up to 2 min of landmarks or load a synthetic example. Replay affects only the 3D preview.</p>
       </div>
     </div>
   </section>
   <section class="card" id="log"></section>
 </main>
 
+<script src="/static/landmark-session.js"></script>
+<script src="/static/demo-lab.js"></script>
 <script>
 const JOINT_LABELS = ["Thumb", "Thumb rot.", "Index", "Middle", "Ring", "Pinky"];
 const SERIES = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6"];
@@ -142,6 +180,7 @@ function connect() {
     const msg = JSON.parse(e.data);
     if (msg.type === "pong") { panelRTT = performance.now() - msg.id; return; }
     S = msg; if (!built) build(); update();
+    if (window.dispatchEvent) window.dispatchEvent(new CustomEvent("r1hands-state", {detail: S}));
   };
   ws.onclose = () => { drivingTeleop = false; setPill("conn", "bad", "panel disconnected"); setTimeout(connect, 1000); };
 }
@@ -320,13 +359,13 @@ function setupHover(side) {
 }
 
 // ---------------------------------------------------------------- controls
-document.getElementById("estop").onclick = () => send({ type: S && S.estopped ? "resume" : "estop" });
+document.getElementById("estop").onclick = () => { if (window.DemoLab) window.DemoLab.pause(); send({ type: S && S.estopped ? "resume" : "estop" }); };
 document.getElementById("mirror").onclick = () => send({ type: "mirror", on: !(S && S.mirror) });
 document.getElementById("rec").onclick = () => send({ type: "record", on: !(S && S.recording) });
 document.getElementById("speed").oninput = e => send({ type: "speed", v: +e.target.value });
 document.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" && e.target.type !== "range") return;
-  if (e.code === "Space") { e.preventDefault(); send({ type: S && S.estopped ? "resume" : "estop" }); drivingTeleop = false; return; }
+  if (e.code === "Space") { e.preventDefault(); if (window.DemoLab) window.DemoLab.pause(); send({ type: S && S.estopped ? "resume" : "estop" }); drivingTeleop = false; return; }
   if (!S) return;
   if (e.key === "o" || e.key === "O") send({ type: "grasp", side: active, name: "open" });
   const n = parseInt(e.key); if (n >= 1 && n <= 8 && S.grasps[n - 1]) send({ type: "grasp", side: active, name: S.grasps[n - 1] });
@@ -342,6 +381,7 @@ setInterval(() => {
 function stopCam() {
   cameraSession++;
   camOn = false; drivingTeleop = false; busy = false; capturing = null;
+  if (window.DemoLab) window.DemoLab.stopRecording();
   send({type: "teleop_arm", on: false});
   const video = document.getElementById("video");
   if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
@@ -351,6 +391,7 @@ function stopCam() {
 }
 async function startCam() {
   const btn = document.getElementById("cam"); btn.textContent = "Loading model…"; btn.disabled = true;
+  if (window.DemoLab) window.DemoLab.pause();
   const session = ++cameraSession;
   try {
     worker = new Worker("/static/hand-worker.js");
@@ -391,19 +432,29 @@ async function startCam() {
     schedule();
   } catch (error) { stopCam(); alert("Camera/model failed: " + error); }
 }
-function acceptTracking(data) {
-  const age = performance.now() - data.timestamp;
-  if (age > 200 || !camOn) return;
+let previewSeq = 0;
+const previewPageId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function acceptTracking(data, options = {}) {
+  const replay = options.source === "replay";
+  const age = replay ? 0 : performance.now() - data.timestamp;
+  if (!replay && (age > 200 || !camOn)) return;
+  if (!replay && window.DemoLab) window.DemoLab.observe(data);
   const ov = document.getElementById("overlay"), video = document.getElementById("video");
-  ov.width = video.videoWidth; ov.height = video.videoHeight;
+  ov.width = video.videoWidth || 640; ov.height = video.videoHeight || 480;
   const g = ov.getContext("2d");
   const candidates = {};
   for (const h of data.hands) {
     let side = h.label === "left" ? "right" : "left";
-    if (document.getElementById("swap").checked) side = side === "left" ? "right" : "left";
+    if (replay ? options.swap : document.getElementById("swap").checked) side = side === "left" ? "right" : "left";
     const clipped = h.image.some(p => p.x < 0.01 || p.x > 0.99 || p.y < 0.01 || p.y > 0.99);
     const good = h.score >= 0.8 && !clipped;
     g.fillStyle = good ? css("--good") : css("--warning");
+    g.strokeStyle = g.fillStyle; g.lineWidth = 2;
+    for (const chain of [[0,1,2,3,4], [0,5,6,7,8], [5,9,10,11,12], [9,13,14,15,16], [13,17,18,19,20], [17,0]]) {
+      g.beginPath();
+      chain.forEach((i, k) => { const p = h.image[i]; k ? g.lineTo(p.x * ov.width, p.y * ov.height) : g.moveTo(p.x * ov.width, p.y * ov.height); });
+      g.stroke();
+    }
     for (const p of h.image) { g.beginPath(); g.arc(p.x * ov.width, p.y * ov.height, 3, 0, 7); g.fill(); }
     // Canvas is mirrored with the video, so counter-mirror the text to keep it readable.
     const wrist = h.image[0];
@@ -415,10 +466,17 @@ function acceptTracking(data) {
     }
   }
   const hands = Object.fromEntries(Object.entries(candidates).filter(([, h]) => !h.ambiguous));
-  if (capturing && hands[capturing.side]) send({type: "calib", side: capturing.side,
+  if (!replay && capturing && hands[capturing.side]) send({type: "calib", side: capturing.side,
     pose: capturing.pose, kp: hands[capturing.side].points, score: hands[capturing.side].score});
+  const writable = ws && ws.readyState === 1 && ws.bufferedAmount === 0;
+  // The preview is read-only; it uses an independent server-side mapper.
+  if (ws && ws.readyState === 1 && (replay || writable))
+    send({type: "preview", source: replay ? "replay" : "live",
+      stream: replay ? options.stream : `camera-${previewPageId}-${cameraSession}`,
+      seq: replay ? options.index : ++previewSeq, sample_time: data.timestamp / 1000,
+      hand: hands.right || null, profile: options.profile});
   // Drop observations under backpressure. Never queue camera frames or commands.
-  if (drivingTeleop && S && !S.estopped && ws && ws.readyState === 1 && ws.bufferedAmount === 0)
+  if (!replay && drivingTeleop && S && !S.estopped && writable)
     send({type: "teleop", seq: ++seq, panel_time: S.panel_time, age_ms: age,
       inference_ms: data.inference_ms, hands: hands.right ? {right: hands.right} : {}});
 }
@@ -460,8 +518,13 @@ function updateCalib() {
   }
 }
 
+if (window.DemoLab) window.DemoLab.attach({
+  cameraOn: () => camOn, state: () => S, stopCamera: stopCam,
+  connected: () => ws && ws.readyState === 1, replay: acceptTracking,
+});
 connect();
 requestAnimationFrame(draw);
 </script>
+<script type="module" src="/static/hand-preview.js"></script>
 </body>
 </html>

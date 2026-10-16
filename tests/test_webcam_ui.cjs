@@ -7,7 +7,7 @@ const elements = new Map();
 function element(id) {
   if (!elements.has(id)) elements.set(id, {
     checked: false, textContent: '', lastElementChild: {textContent: ''}, classList: {toggle(){}, add(){}, remove(){}},
-    addEventListener(){}, getContext: () => ({beginPath(){}, arc(){}, fill(){}, save(){},
+    addEventListener(){}, getContext: () => ({beginPath(){}, moveTo(){}, lineTo(){}, stroke(){}, arc(){}, fill(){}, save(){},
       translate(){}, scale(){}, fillText(){}, restore(){}}),
     videoWidth: 640, videoHeight: 480,
   });
@@ -50,3 +50,9 @@ assert.deepEqual(sent.at(-1).hands, {}, 'duplicate anatomical labels are ambiguo
 vm.runInContext('ws.onclose()', context);
 assert.equal(vm.runInContext('drivingTeleop', context), false);
 console.log('Webcam UI contracts passed');
+// Replay can update the read-only mapper even while the camera is off; it cannot drive motors.
+sent = [];
+vm.runInContext('camOn = false; drivingTeleop = true; acceptTracking(result, {source:"replay", stream:"test", index:0, swap:false})', context);
+assert.equal(sent.length, 1);
+assert.equal(sent[0].type, 'preview');
+assert.equal(sent[0].source, 'replay');
