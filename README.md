@@ -97,6 +97,7 @@ src/r1hands/control/            skills.py (level-gated skill API), kinematics.py
 src/r1hands/retarget/hand.py    21 MANO/MediaPipe keypoints -> 6 Revo2 commands (closed form, per-user calibration)
 src/r1hands/policies/cap/       code-as-policy with Claude (sandboxed, level-gated, operator confirm option)
 src/r1hands/sim/build_model.py  R1 + 2x Revo2 URDF/MJCF (BrainCo's Apache-2.0 description, mimic joints)
+src/r1hands/tasks/              simulation episode recording and state-based task policy training/evaluation
 src/r1hands/data/               L1/L2/L3 LeRobot v3 layouts; G1_Brainco -> R1 converter (L2, not yet run)
 scripts/                        l1_hand_check.py, revo2_scan.py, deploy_jetson.sh
 ```
@@ -104,8 +105,10 @@ scripts/                        l1_hand_check.py, revo2_scan.py, deploy_jetson.s
 ## Verified vs. not
 
 - Verified:
-  - 12 tests pass (mock + sim): guard rate limit and stall latch, IK, retargeting, code-as-policy loop
-    (with a fake client), panel commands/teleop/recording, and the hand server ↔ remote panel path.
+  - 47 Python tests pass (mock + sim): guard rate limit and stall latch, IK, retargeting, code-as-policy loop
+    (with a fake client), panel commands/teleop/recording, the hand server ↔ remote panel path,
+    mapping datasets, and simulated task episodes/training. Browser smoke checks cover camera startup,
+    mapping review, 3D preview, task recording/download and tab layout.
   - `bc-stark-sdk` 2.0.7 API names were checked against the Linux wheel. The driver's error path was run on
     Linux.
 - **Not yet run on hardware:**
@@ -134,3 +137,13 @@ no camera or hardware is needed for the example.
 [Mapping training](docs/mapping-training.md) adds paused-frame pose review, synchronized NPZ
 exports with quality masks and label provenance, grouped baseline training/evaluation, and a
 `--mapping-model` option for inspecting learned predictions in the read-only 3D preview.
+
+[Task learning](docs/task-learning.md) adds an isolated MuJoCo grasp-and-hold scene,
+synchronized RGB/state/action episodes, measured success, and a small task-policy baseline
+with held-out seed rollouts. The panel is organized into **Hand Control**, **Mapping Lab**,
+**Task Learning**, and **Logs** tabs. Start Task Learning with the mock backend; no hardware
+is needed. The built-in example is labeled as scripted data.
+
+Run `scripts/run_task_panel.sh local` on the MacBook, or `scripts/run_task_panel.sh server`
+on a headless Linux lab server and connect through an SSH tunnel. See the
+[local/server setup](docs/task-learning.md#local-and-lab-server-options) for GPU and CPU rendering options.

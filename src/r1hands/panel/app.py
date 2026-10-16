@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import json
 import io
+import hashlib
 import time
 import webbrowser
 from pathlib import Path
@@ -28,6 +29,7 @@ from r1hands.common.types import HAND_JOINTS, N_HAND
 from r1hands.control.skills import GRASPS
 from r1hands.hal.factory import load_config, make_robot
 from r1hands.panel.runner import HandRunner
+from r1hands.tasks.service import TaskService
 from r1hands.panel.preview import HandPreview, MESH_DIR, example_clip, hand_model, profile
 from r1hands.retarget.hand import HandRetargeter
 from r1hands.retarget.live import LiveHand, validate_landmarks
@@ -48,9 +50,10 @@ def _server_sides(ws_url: str) -> list[str] | None:
 
 
 class Panel:
-    def __init__(self, backend: str, remote: str | None, sides=("left", "right"), mapping_model=None):
+    def __init__(self, backend: str, remote: str | None, sides=("left", "right"), mapping_model=None, task_renderer="auto"):
         from r1hands.data.mapping import load_model
         model = load_model(mapping_model) if mapping_model is not None else None
+        self.mapping_model_sha256 = hashlib.sha256(Path(mapping_model).read_bytes()).hexdigest() if mapping_model else None
         cfg = load_config()
         self.backend = backend
         if backend == "remote":  # show only the hands the server actually serves
@@ -77,6 +80,7 @@ class Panel:
         self.teleop_metrics = {}
         self.thumb_calibrated = {s: False for s in sides}
         self.preview = HandPreview(model)
+        self.task_service = TaskService(REPO / "logs" / "tasks", renderer=task_renderer)
         self.rec: dict | None = None
         self.log: list[str] = []
 
@@ -105,10 +109,16 @@ class Panel:
         if t == "preview":
             if m.get("source") == "replay" and self.teleop_armed:
                 raise ValueError("Disarm live control before preview replay")
-            self.preview.update(m, profile(self.retarget.get("right", HandRetargeter())))
+            accepted = self.preview.update(m, profile(self.retarget.get("right", HandRetargeter())))
+            if accepted and self.task_service.mapping_enabled and m.get("source", "live") == "live":
+                observation = m.get("hand")
+                self.task_service.set_target(self.preview.target, source="mapping",
+                    valid=self.preview.live.status == "tracking", landmarks=observation.get("points") if observation else None)
             return
         if t == "teleop_arm":
             if m.get("on"):
+                if self.task_service.mapping_enabled:
+                    raise ValueError("Stop task mapping input before arming robot teleop")
                 if self.teleop_armed and owner is not self.teleop_owner:
                     raise ValueError("Teleop is controlled by another browser")
                 if not self.calibrated.get("right", False):
@@ -121,6 +131,8 @@ class Panel:
             elif owner is self.teleop_owner:
                 self.disarm_teleop()
             return
+        if t in {"calib_reset", "calib", "calib_begin"} and self.task_service.snapshot().get("recording"):
+            raise ValueError("Finish the task episode before changing calibration")
         if t in {"finger", "grasp", "routine", "estop", "calib_reset", "calib", "calib_begin"}:
             self.disarm_teleop()
         if t == "finger":
@@ -134,6 +146,7 @@ class Panel:
                 self.runner.speed = float(np.clip(m["v"], 0.05, 1.0))
         elif t == "estop":
             self.runner.estop()
+            self.task_service.hold(lock=True)
             if self.link:
                 self.link.send({"type": "estop"})
             self.note("E-STOP: hands opening, commands locked")
@@ -141,6 +154,7 @@ class Panel:
             if self.link:
                 self.link.send({"type": "resume"})
             self.runner.resume()
+            self.task_service.locked = False
             self.note("resumed")
         elif t == "mirror":
             self.mirror = bool(m["on"])
@@ -267,7 +281,7 @@ class Panel:
         if self.link is not None:
             snap["error"] = snap["error"] or self.link.state.get("error")
             conn.update(ok=self.link.connected and time.monotonic() - self.link.last_rx < 0.3, rate=self.link.rate_hz, rtt_ms=self.link.rtt_ms)
-        return {**snap, "preview": self.preview.snapshot(),
+        return {**snap, "task": self.task_service.snapshot(), "preview": self.preview.snapshot(),
                 "retarget_profile": profile(self.retarget.get("right", HandRetargeter())),
                 "panel_time": time.monotonic(), "teleop_armed": self.teleop_armed,
                 "tracking": {s: (v.status if v.last_t is not None and time.monotonic() - v.last_t < 0.25
@@ -297,6 +311,63 @@ def make_app(panel: Panel):
                                 headers={"Content-Disposition": 'attachment; filename="right-hand-mapping.npz"'})
         except (ValueError, TypeError, KeyError, OverflowError) as error:
             raise web.HTTPBadRequest(text=str(error)) from error
+
+    async def task_action(request):
+        try:
+            data = await request.json()
+            action = data.get("action")
+            service = panel.task_service
+            if action == "start":
+                await asyncio.to_thread(service.start)
+            elif action == "reset":
+                seed = int(data.get("seed", 0))
+                if not 0 <= seed < 2**32: raise ValueError("Seed must be between 0 and 2^32-1")
+                await asyncio.to_thread(service.call, "reset", seed=seed)
+            elif action == "release":
+                await asyncio.to_thread(service.call, "release")
+            elif action == "begin":
+                provenance = {"operator_id": str(data.get("operator_id", ""))[:200],
+                    "task_description": "Grasp the block and hold after support withdrawal",
+                    "mapping_profile": profile(panel.retarget.get("right", HandRetargeter())),
+                    "mapping_mapper": panel.preview.snapshot()["mapper"],
+                    "mapping_model_sha256": panel.mapping_model_sha256}
+                await asyncio.to_thread(service.call, "begin", provenance=provenance)
+            elif action == "finish":
+                outcome = data.get("outcome", "unspecified")
+                if outcome not in ("unspecified", "success", "failure"): raise ValueError("Unknown operator outcome")
+                await asyncio.to_thread(service.call, "finish", outcome=outcome)
+            elif action == "example":
+                if not service.latest: raise ValueError("Start task simulation first")
+                service.mapping_enabled = False
+                service.set_target([0.734, 0.382, 0.323, 0.541, 0.78, 0.626], source="scripted")
+            elif action == "target":
+                if not service.latest: raise ValueError("Start task simulation first")
+                service.mapping_enabled = False
+                service.set_target(data["position"])
+            elif action == "mapping":
+                if not service.latest: raise ValueError("Start task simulation first")
+                if panel.teleop_armed: raise ValueError("Disarm robot control before using the mapping as task input")
+                if service.locked: raise ValueError("Resume the stop lockout first")
+                service.hold()
+                service.mapping_enabled = bool(data.get("on"))
+            elif action == "hold":
+                service.hold()
+            else: raise ValueError("Unknown task action")
+            return web.json_response(service.snapshot())
+        except (ValueError, TypeError, KeyError, RuntimeError, TimeoutError) as error:
+            raise web.HTTPBadRequest(text=str(error)) from error
+
+    async def task_frame(_):
+        if panel.task_service.png is None: raise web.HTTPNotFound()
+        return web.Response(body=panel.task_service.png, content_type="image/png", headers={"Cache-Control":"no-store"})
+
+    async def task_download(request):
+        import re
+        identifier = request.match_info["identifier"]
+        if not re.fullmatch(r"[0-9a-f]{32}", identifier): raise web.HTTPNotFound()
+        path = panel.task_service.directory / (identifier + ".npz")
+        if not path.is_file(): raise web.HTTPNotFound()
+        return web.FileResponse(path, headers={"Content-Disposition": f'attachment; filename="task-{identifier}.npz"'})
 
     async def preview_model(_):
         return web.json_response(hand_model())
@@ -350,6 +421,7 @@ def make_app(panel: Panel):
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
             panel._record(False)
+            await asyncio.to_thread(panel.task_service.close)
 
     app = web.Application(client_max_size=20 * 1024 * 1024)
     app.cleanup_ctx.append(recording_lifecycle)
@@ -359,6 +431,9 @@ def make_app(panel: Panel):
     app.router.add_get("/preview/meshes/{name}", preview_mesh)
     app.router.add_get("/preview/example", example)
     app.router.add_post("/mapping/export", mapping_export)
+    app.router.add_post("/tasks/action", task_action)
+    app.router.add_get("/tasks/frame.png", task_frame)
+    app.router.add_get("/tasks/episodes/{identifier}", task_download)
     app.router.add_static("/static", STATIC)
     return app
 
@@ -371,9 +446,11 @@ def main():
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--sides", default="left,right")
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--task-renderer", choices=["auto", "glfw", "egl", "osmesa"], default="auto",
+                    help="Task simulation rendering: auto/local default, egl/headless Linux GPU, osmesa/headless Linux CPU")
     ap.add_argument("--mapping-model", type=Path, help="Learned mapping NPZ for the read-only preview; motor control remains analytic")
     a = ap.parse_args()
-    panel = Panel(a.backend, a.remote, tuple(a.sides.split(",")), mapping_model=a.mapping_model)
+    panel = Panel(a.backend, a.remote, tuple(a.sides.split(",")), mapping_model=a.mapping_model, task_renderer=a.task_renderer)
     if not a.no_browser:
         webbrowser.open(f"http://localhost:{a.port}")
     try:

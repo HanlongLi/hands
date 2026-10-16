@@ -43,11 +43,12 @@ h1 { font-size: 16px; margin: 0 8px 0 0; font-weight: 650; }
 button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface-2); color: var(--text-primary); cursor: pointer; }
 button:hover { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
 button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 #estop { background: var(--critical); color: #fff; border: none; font-weight: 700; padding: 9px 18px; letter-spacing: .02em; }
 #estop.locked { background: var(--surface-2); color: var(--critical); border: 2px solid var(--critical); }
-main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px 20px; }
-@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+main { display: block; gap: 16px; padding: 16px 20px; }
+@media (max-width: 900px) { .control-grid { grid-template-columns: 1fr; } }
 @media (max-width: 520px) { main { grid-template-columns: 1fr; padding: 16px; } header { padding: 12px 16px; } }
 .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
 .card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
@@ -102,21 +103,44 @@ canvas { width: 100%; height: 170px; display: block; }
 .video video, .video canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
 #log { grid-column: 1 / -1; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-secondary); max-height: 180px; overflow: auto; }
 .status-ok .dot { background: var(--good); } .status-warn .dot { background: var(--warning); } .status-bad .dot { background: var(--critical); }
+.tabs { display:flex; gap:8px; padding:12px 20px 0; flex-wrap:wrap; }
+.tabs [aria-selected="true"] { background:var(--accent); color:white; border-color:var(--accent); }
+.tab-panel[hidden] { display:none !important; }
+.control-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.control-toolbar { display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:16px; }
+.task-grid { display:grid; grid-template-columns:minmax(240px,1fr) minmax(0,1fr); gap:20px; }
+#task-image { width:100%; aspect-ratio:4/3; object-fit:contain; background:var(--track); border-radius:10px; }
+.task-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:12px 0; }
+.task-metrics div { background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px; }
+.task-metrics b { display:block; font-variant-numeric:tabular-nums; }
+#task-error { color:var(--critical); }
+@media(max-width:760px) { .task-grid,.control-grid {grid-template-columns:minmax(0,1fr);} }
 </style>
 </head>
 <body>
 <header>
   <h1>Revo2 hand panel</h1>
   <span id="conn" class="pill"><span class="dot"></span><span>connecting…</span></span>
-  <label class="ctl">Speed <input id="speed" type="range" min="0.05" max="1" step="0.05" value="0.5"><span id="speedv">0.50</span></label>
-  <button id="mirror" title="Commands to one hand also go to the other">Mirror L↔R</button>
-  <button id="rec" title="Record target, position and current to logs/panel/*.npz">● Record</button>
   <span class="spacer"></span>
-  <span class="muted">Space: E-stop · 1–8: preset · O: open (active hand)</span>
+  <span class="muted">Space: E-stop · Hand Control: 1–8 presets · O open</span>
   <button id="estop" title="Open both hands slowly and lock commands (Space)">■ STOP</button>
 </header>
 
+<nav class="tabs" role="tablist" aria-label="Panel workspaces">
+  <button id="tab-control" role="tab" aria-controls="panel-control" aria-selected="false" data-tab="control">Hand Control</button>
+  <button id="tab-mapping" role="tab" aria-controls="panel-mapping" aria-selected="true" data-tab="mapping">Mapping Lab</button>
+  <button id="tab-task" role="tab" aria-controls="panel-task" aria-selected="false" data-tab="task">Task Learning</button>
+  <button id="tab-logs" role="tab" aria-controls="panel-logs" aria-selected="false" data-tab="logs">Logs</button>
+</nav>
 <main id="main">
+  <section id="panel-control" class="tab-panel" role="tabpanel" aria-labelledby="tab-control" hidden>
+    <div class="card control-toolbar">  <label class="ctl">Speed <input id="speed" type="range" min="0.05" max="1" step="0.05" value="0.5"><span id="speedv">0.50</span></label>
+  <button id="mirror" title="Commands to one hand also go to the other">Mirror L↔R</button>
+  <button id="rec" title="Record target, position and current to logs/panel/*.npz">● Record</button>
+</div>
+    <div id="hand-controls" class="control-grid"></div>
+  </section>
+  <section id="panel-mapping" class="tab-panel" role="tabpanel" aria-labelledby="tab-mapping">
   <section class="card" id="teleop">
     <div class="card-head"><h2>Webcam teleop</h2>
       <span id="tele-status" class="pill"><span class="dot"></span><span>off</span></span></div>
@@ -181,7 +205,48 @@ canvas { width: 100%; height: 170px; display: block; }
       </div>
     </div>
   </section>
-  <section class="card" id="log"></section>
+  </section>
+  <section id="panel-task" class="tab-panel" role="tabpanel" aria-labelledby="tab-task" hidden>
+    <section class="card">
+      <div class="card-head"><h2>Task Learning · Grasp and hold</h2><span class="pill">Simulation only</span></div>
+      <p>Close the fixed-wrist hand around the block, then withdraw its support. Hold it with opposing finger contacts for one second.</p>
+      <div class="task-grid">
+        <div>
+          <img id="task-image" alt="MuJoCo hand and block task camera" hidden>
+          <p id="task-placeholder" class="muted">Start the isolated simulation to see the task scene. No robot connection is required.</p>
+          <div class="row"><button id="task-start">Start task simulation</button>
+            <label class="ctl">Reset seed <input id="task-seed" type="number" min="0" max="4294967295" value="0" style="width:90px"></label>
+            <button id="task-reset" disabled>Reset scene</button></div>
+          <div class="row"><button id="task-release" disabled>Withdraw support</button><button id="task-hold" disabled>Hold hand</button></div>
+          <div class="task-metrics">
+            <div><span class="muted">Task status</span><b id="task-status">Not started</b></div>
+            <div><span class="muted">Continuous stable hold</span><b id="task-hold-time">0.00 s</b></div>
+            <div><span class="muted">Contact fingers</span><b id="task-contacts">—</b></div>
+            <div><span class="muted">Maximum contact force</span><b id="task-force">—</b></div>
+          </div>
+          <p class="muted">Success is measured after support withdrawal. Contact geometry and force thresholds are simulation settings; hand self-collision is not validated.</p>
+        </div>
+        <div>
+          <h3>Demonstration input</h3>
+          <div class="row"><button id="task-mapping" disabled>Use live mapping input</button><button id="task-example" disabled>Example grasp target</button><button id="task-open" disabled>Open task hand</button></div>
+          <p class="muted">Use the sliders below, or start your camera in Mapping Lab and enable live mapping input here. These controls affect this simulated hand only.</p>
+          <div id="task-sliders"></div>
+          <h3>Episode recorder</h3>
+          <label class="ctl">Operator ID <input id="task-operator" maxlength="200" placeholder="operator-01" size="18"></label>
+          <div class="row"><button id="task-begin" disabled>Start episode</button><button id="task-finish" disabled>Finish &amp; save episode</button></div>
+          <p id="task-record-status" class="muted">Saves synchronized RGB, hand/object states, issued actions and validity flags. Limit: 20 seconds per episode.</p>
+          <p id="task-saved" class="muted">No episodes saved in this session.</p>
+          <details><summary>Training baseline and next models</summary>
+            <p class="muted">The first baseline uses joint/object state to predict six finger targets. A later vision model would infer actions from images, potentially predicting several future actions at once. First collect successful demonstrations with different reset seeds.</p>
+            <pre style="white-space:pre-wrap;overflow-wrap:anywhere">.venv/bin/python -m r1hands.tasks.policy train logs/tasks/*.npz --output models/task.npz</pre>
+            <p class="muted">Offline prediction error and closed-loop success are different checks. The CLI also supports held-out simulation rollouts.</p>
+          </details>
+          <p id="task-error" role="status"></p>
+        </div>
+      </div>
+    </section>
+  </section>
+  <section id="panel-logs" class="tab-panel" role="tabpanel" aria-labelledby="tab-logs" hidden><section class="card" id="log"></section></section>
 </main>
 
 <script src="/static/landmark-session.js"></script>
@@ -216,7 +281,7 @@ function setPill(id, cls, text) {
 function build() {
   built = true;
   sides = Object.keys(S.hands);
-  const main = document.getElementById("main"), tele = document.getElementById("teleop");
+  const main = document.getElementById("hand-controls");
   for (const side of sides) {
     hist[side] = [];
     const card = document.createElement("section");
@@ -244,7 +309,7 @@ function build() {
         <div class="legend">${JOINT_LABELS.map((n, i) => `<span><span class="sw" style="background:var(${SERIES[i]})"></span>${n}</span>`).join("")}
           <span><span style="width:14px;border-top:2px dashed var(--serious)"></span>stall threshold</span></div>
       </div>`;
-    main.insertBefore(card, tele);
+    main.appendChild(card);
     for (let i = 0; i < 6; i++) {
       const sl = document.getElementById(`sl-${side}-${i}`);
       sl.addEventListener("pointerdown", () => dragging[side + i] = true);
@@ -388,7 +453,7 @@ document.getElementById("speed").oninput = e => send({ type: "speed", v: +e.targ
 document.addEventListener("keydown", e => {
   if (e.target.tagName === "INPUT" && e.target.type !== "range") return;
   if (e.code === "Space") { e.preventDefault(); if (window.DemoLab) window.DemoLab.pause(); send({ type: S && S.estopped ? "resume" : "estop" }); drivingTeleop = false; return; }
-  if (!S) return;
+  if (!S || document.getElementById("panel-control").hidden) return;
   if (e.key === "o" || e.key === "O") send({ type: "grasp", side: active, name: "open" });
   const n = parseInt(e.key); if (n >= 1 && n <= 8 && S.grasps[n - 1]) send({ type: "grasp", side: active, name: S.grasps[n - 1] });
 });
@@ -553,6 +618,8 @@ connect();
 requestAnimationFrame(draw);
 </script>
 <script src="/static/mapping-lab.js"></script>
+<script src="/static/workspaces.js"></script>
+<script src="/static/task-lab.js"></script>
 <script type="module" src="/static/hand-preview.js"></script>
 </body>
 </html>

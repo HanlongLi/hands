@@ -61,7 +61,7 @@ class HandPreview:
             self.stream, self.signature = stream, signature
             self.last_seq, self.last_sample = -1, None
         if seq <= self.last_seq or (self.last_sample is not None and sample <= self.last_sample):
-            return
+            return False
         self.last_seq, self.last_sample = seq, sample
         self.last_received = time.monotonic()
         self.source = source
@@ -69,10 +69,11 @@ class HandPreview:
         observation = message.get('hand')
         if observation is None:
             self.live.reset()
-            return
+            return True
         result = self.live.update(observation.get('points'), float(observation.get('score', 0)), sample)
         if result is not None:
             self.target = result
+        return True
 
     def snapshot(self):
         status = self.live.status
