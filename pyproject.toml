@@ -1,0 +1,40 @@
+[project]
+name = "r1hands"
+version = "0.1.0"
+description = "Unitree R1 EDU + BrainCo Revo2 Basic: hardware layer, data pipeline, and IL / RL / code-as-policy control"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "pyyaml>=6",
+]
+
+[project.optional-dependencies]
+# Level 1, on the Linux machine wired to the hands (R1 Jetson): Revo2 SDK + the hand server.
+hands = ["bc-stark-sdk>=2.0.7", "aiohttp>=3.9"]
+# Levels 2-3 also need unitree_sdk2_python (install from github.com/unitreerobotics/unitree_sdk2_python).
+hw = ["bc-stark-sdk>=2.0.7", "aiohttp>=3.9"]
+# Mac control panel and the hand server it talks to.
+panel = ["aiohttp>=3.9"]
+# Simulation, IK, and the mock-in-sim backend.
+sim = ["mujoco>=3.2", "mink>=0.0.5"]
+# Dataset conversion, recording and the ego-video pipeline (heavy models run on the lab servers).
+data = ["pyarrow>=14", "pandas>=2", "opencv-python-headless>=4.8", "scipy>=1.10"]
+# Code-as-policy with Claude.
+cap = ["anthropic>=0.40"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+r1h-panel = "r1hands.panel.app:main"
+r1h-hand-server = "r1hands.panel.hand_server:main"
+r1h-cap = "r1hands.policies.cap.agent:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/r1hands"]
+artifacts = ["src/r1hands/panel/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

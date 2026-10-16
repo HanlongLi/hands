@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revo2 Hand Panel</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f4f4f2; --surface-1: #fcfcfb; --surface-2: #ffffff; --border: #e2e1dc;
+  --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7c7b76;
+  --grid: #ecebe6; --axis: #b9b8b2; --track: #e6e5e0; --accent: #2a78d6;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111110; --surface-1: #1a1a19; --surface-2: #202020; --border: #2e2e2c;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --grid: #2a2a28; --axis: #4a4a46; --track: #2f2f2d; --accent: #3987e5;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111110; --surface-1: #1a1a19; --surface-2: #202020; --border: #2e2e2c;
+  --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+  --grid: #2a2a28; --axis: #4a4a46; --track: #2f2f2d; --accent: #3987e5;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text-primary);
+  font: 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif; }
+header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center;
+  padding: 12px 20px; background: var(--surface-1); border-bottom: 1px solid var(--border); }
+h1 { font-size: 16px; margin: 0 8px 0 0; font-weight: 650; }
+.pill { display: inline-flex; gap: 6px; align-items: center; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+.ctl { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; }
+.spacer { flex: 1; }
+button { font: inherit; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-primary); cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+#estop { background: var(--critical); color: #fff; border: none; font-weight: 700; padding: 9px 18px; letter-spacing: .02em; }
+#estop.locked { background: var(--surface-2); color: var(--critical); border: 2px solid var(--critical); }
+main { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; padding: 16px 20px; }
+@media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { main { grid-template-columns: 1fr; padding: 16px; } header { padding: 12px 16px; } }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+.card.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.card h2 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 10px; }
+.card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.muted { color: var(--text-muted); font-size: 12px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.presets button { padding: 4px 10px; font-size: 12.5px; }
+.presets kbd { color: var(--text-muted); font-size: 11px; margin-left: 4px; }
+.finger { display: grid; grid-template-columns: 96px minmax(0, 1fr) 136px; align-items: center; gap: 10px; margin: 6px 0; }
+.fname { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 13px; }
+.sw { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.slider { position: relative; height: 28px; }
+.slider input { position: absolute; inset: 0; width: 100%; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; }
+.slider input::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: transparent; }
+.slider input::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -5px; border-radius: 50%;
+  background: var(--surface-2); border: 2px solid var(--text-secondary); cursor: grab; }
+.slider input::-moz-range-track { height: 6px; border-radius: 3px; background: transparent; }
+.slider input::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--surface-2); border: 2px solid var(--text-secondary); }
+.track { position: absolute; left: 0; right: 0; top: 11px; height: 6px; border-radius: 3px; background: var(--track); pointer-events: none; }
+.fill { position: absolute; left: 0; top: 11px; height: 6px; border-radius: 3px; pointer-events: none; opacity: .9; }
+.vals { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--text-secondary); text-align: right; white-space: nowrap; }
+.vals b { color: var(--text-primary); font-weight: 600; }
+.latch { color: var(--serious); font-weight: 600; }
+.chart-wrap { position: relative; margin-top: 14px; }
+.chart-title { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.chart-title span:first-child { font-size: 13px; font-weight: 600; }
+canvas { width: 100%; height: 170px; display: block; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: 12px; color: var(--text-secondary); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.tip { position: absolute; pointer-events: none; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px 9px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); display: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tip div { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+#teleop { grid-column: 1 / -1; }
+.tele-grid { display: grid; grid-template-columns: minmax(240px, 420px) 1fr; gap: 16px; align-items: start; }
+@media (max-width: 760px) { .tele-grid { grid-template-columns: 1fr; } }
+.video { position: relative; background: #000; border-radius: 10px; overflow: hidden; aspect-ratio: 4/3; }
+.video video, .video canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+#log { grid-column: 1 / -1; font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-secondary); max-height: 180px; overflow: auto; }
+.status-ok .dot { background: var(--good); } .status-warn .dot { background: var(--warning); } .status-bad .dot { background: var(--critical); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Revo2 hand panel</h1>
+  <span id="conn" class="pill"><span class="dot"></span><span>connecting…</span></span>
+  <label class="ctl">Speed <input id="speed" type="range" min="0.05" max="1" step="0.05" value="0.5"><span id="speedv">0.50</span></label>
+  <button id="mirror" title="Commands to one hand also go to the other">Mirror L↔R</button>
+  <button id="rec" title="Record target, position and current to logs/panel/*.npz">● Record</button>
+  <span class="spacer"></span>
+  <span class="muted">Space: E-stop · 1–8: preset · O: open (active hand)</span>
+  <button id="estop" title="Open both hands slowly and lock commands (Space)">■ STOP</button>
+</header>
+
+<main id="main">
+  <section class="card" id="teleop">
+    <div class="card-head"><h2>Webcam teleop</h2>
+      <span id="tele-status" class="pill"><span class="dot"></span><span>off</span></span></div>
+    <div class="tele-grid">
+      <div class="video"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
+      <div>
+        <div class="row" style="margin-top:0">
+          <button id="cam">Start camera</button>
+          <button id="drive">Arm right-hand demo</button>
+          <label class="ctl"><input type="checkbox" id="swap"> Swap left/right</label>
+        </div>
+        <p class="muted">Right-hand demo: show your right palm and confirm the overlay says “right”. Use Swap if needed. The preview is mirrored.
+          Calibrate each hand once: hold it fully open and press “open”, then make a fist and press “fist”
+          (each captures 1 s of frames). Capture a thumb–index pinch to tune thumb bend and opposition separately. Keep the full hand visible. Three valid frames acquire tracking; tracking loss holds the measured pose within 250 ms on the Mac. Space stops and disarms. Finger spread and wrist motion are not reproduced.</p>
+        <p id="tele-metrics" class="muted">Tracking: waiting · inference: — · frame age: — · panel RTT: —</p>
+        <div id="calib"></div>
+      </div>
+    </div>
+  </section>
+  <section class="card" id="log"></section>
+</main>
+
+<script>
+const JOINT_LABELS = ["Thumb", "Thumb rot.", "Index", "Middle", "Ring", "Pinky"];
+const SERIES = ["--s1", "--s2", "--s3", "--s4", "--s5", "--s6"];
+const WINDOW_S = 10;
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+let ws, S = null, active = "right", sides = [], dragging = {}, built = false;
+const hist = {};            // side -> [{t, c:[6]}]
+
+function send(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
+
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === "pong") { panelRTT = performance.now() - msg.id; return; }
+    S = msg; if (!built) build(); update();
+  };
+  ws.onclose = () => { drivingTeleop = false; setPill("conn", "bad", "panel disconnected"); setTimeout(connect, 1000); };
+}
+
+function setPill(id, cls, text) {
+  const el = document.getElementById(id);
+  el.className = "pill status-" + cls;
+  el.lastElementChild.textContent = text;
+}
+
+function build() {
+  built = true;
+  sides = Object.keys(S.hands);
+  const main = document.getElementById("main"), tele = document.getElementById("teleop");
+  for (const side of sides) {
+    hist[side] = [];
+    const card = document.createElement("section");
+    card.className = "card"; card.id = "card-" + side;
+    card.onclick = () => setActive(side);
+    card.innerHTML = `
+      <div class="card-head"><h2>${side[0].toUpperCase() + side.slice(1)} hand</h2>
+        <span id="st-${side}" class="pill"><span class="dot"></span><span>—</span></span></div>
+      <div class="presets" id="pre-${side}"></div>
+      ${JOINT_LABELS.map((n, i) => `
+        <div class="finger">
+          <div class="fname"><span class="sw" style="background:var(${SERIES[i]})"></span>${n}</div>
+          <div class="slider"><div class="track"></div><div class="fill" id="fill-${side}-${i}" style="background:var(${SERIES[i]})"></div>
+            <input type="range" min="0" max="1" step="0.01" value="0" id="sl-${side}-${i}" aria-label="${side} ${n} target"></div>
+          <div class="vals" id="val-${side}-${i}">—</div>
+        </div>`).join("")}
+      <div class="row">
+        <button data-r="sweep">Sweep fingers</button><button data-r="cycle">Grasp cycle</button>
+        <button data-save>Save as preset…</button>
+      </div>
+      <div class="chart-wrap">
+        <div class="chart-title"><span>Motor current</span><span class="muted" id="cmax-${side}">mA · last ${WINDOW_S} s</span></div>
+        <canvas id="cv-${side}"></canvas>
+        <div class="tip" id="tip-${side}"></div>
+        <div class="legend">${JOINT_LABELS.map((n, i) => `<span><span class="sw" style="background:var(${SERIES[i]})"></span>${n}</span>`).join("")}
+          <span><span style="width:14px;border-top:2px dashed var(--serious)"></span>stall threshold</span></div>
+      </div>`;
+    main.insertBefore(card, tele);
+    for (let i = 0; i < 6; i++) {
+      const sl = document.getElementById(`sl-${side}-${i}`);
+      sl.addEventListener("pointerdown", () => dragging[side + i] = true);
+      sl.addEventListener("pointerup", () => setTimeout(() => dragging[side + i] = false, 300));
+      sl.addEventListener("input", () => send({ type: "finger", side, i, v: +sl.value }));
+    }
+    card.querySelectorAll("[data-r]").forEach(b => b.onclick = () => send({ type: "routine", name: b.dataset.r, side }));
+    card.querySelector("[data-save]").onclick = () => {
+      const name = prompt(`Name for the current ${side}-hand pose:`);
+      if (name) send({ type: "save_grasp", side, name });
+    };
+    setupHover(side);
+  }
+  setActive(sides.includes("right") ? "right" : sides[0]);
+  buildCalib();
+}
+
+function setActive(side) {
+  active = side;
+  for (const s of sides) document.getElementById("card-" + s).classList.toggle("active", s === side);
+}
+
+let presetKey = "";
+function update() {
+  const c = S.conn;
+  const rate = c.rate != null ? ` · ${c.rate.toFixed(0)} Hz` : "";
+  setPill("conn", c.ok ? "ok" : "bad", `${c.backend}${c.url ? " " + c.url.replace("ws://", "").replace("/ws", "") : ""}${rate}${c.ok ? "" : " · offline"}`);
+  const es = document.getElementById("estop");
+  es.textContent = S.estopped ? "▶ Resume" : "■ STOP"; es.classList.toggle("locked", S.estopped);
+  document.getElementById("mirror").classList.toggle("on", S.mirror);
+  const rec = document.getElementById("rec"); rec.classList.toggle("on", S.recording); rec.textContent = S.recording ? "■ Stop recording" : "● Record";
+  document.getElementById("speedv").textContent = S.speed.toFixed(2);
+  if (document.activeElement !== document.getElementById("speed")) document.getElementById("speed").value = S.speed;
+
+  const key = S.grasps.join(",");
+  const now = performance.now() / 1000;
+  for (const side of sides) {
+    const h = S.hands[side];
+    if (key !== presetKey) {
+      document.getElementById("pre-" + side).innerHTML = S.grasps.map((g, k) =>
+        `<button data-g="${g}">${g}${k < 8 ? `<kbd>${k + 1}</kbd>` : ""}</button>`).join("");
+      document.querySelectorAll(`#pre-${side} [data-g]`).forEach(b => b.onclick = e => { e.stopPropagation(); setActive(side); send({ type: "grasp", side, name: b.dataset.g }); });
+    }
+    const latched = h.capped.map((x, i) => x ? JOINT_LABELS[i] : null).filter(Boolean);
+    if (h.fault) setPill("st-" + side, "bad", "✕ fault / no data");
+    else if (latched.length) setPill("st-" + side, "warn", "▲ contact hold: " + latched.join(", "));
+    else setPill("st-" + side, "ok", "ok");
+    for (let i = 0; i < 6; i++) {
+      const sl = document.getElementById(`sl-${side}-${i}`);
+      if (!dragging[side + i]) sl.value = h.target[i];
+      document.getElementById(`fill-${side}-${i}`).style.width = `calc(${(h.position[i] * 100).toFixed(1)}% )`;
+      const cur = h.current ? `${h.current[i].toFixed(0)} mA` : "";
+      document.getElementById(`val-${side}-${i}`).innerHTML =
+        `${h.capped[i] ? '<span class="latch">▲ </span>' : ""}<b>${h.position[i].toFixed(2)}</b> / ${h.target[i].toFixed(2)} · ${cur}`;
+    }
+    if (h.current) { hist[side].push({ t: now, c: h.current }); }
+    document.getElementById("cv-" + side).dataset.n = hist[side].length;
+    while (hist[side].length && now - hist[side][0].t > WINDOW_S) hist[side].shift();
+  }
+  presetKey = key;
+
+  drivingTeleop = !!S.teleop_armed;
+  document.getElementById("drive").classList.toggle("on", drivingTeleop);
+  document.getElementById("drive").textContent = drivingTeleop ? "Disarm / hold" : "Arm right-hand demo";
+  const tl = S.teleop_live && drivingTeleop;
+  setPill("tele-status", tl ? "ok" : "warn", tl ? "● driving" : (camOn ? "camera on, not driving" : "off"));
+  const metrics = S.teleop_metrics || {};
+  const fmt = n => Number.isFinite(n) ? `${n.toFixed(0)} ms` : "—";
+  document.getElementById("tele-metrics").textContent =
+    `Right: ${(S.tracking || {}).right || "waiting"} · inference: ${fmt(metrics.inference_ms)} · frame age: ${fmt(metrics.frame_age_ms)} · panel RTT: ${fmt(panelRTT)} · robot RTT: ${fmt(S.conn.rtt_ms)}`;
+  updateCalib();
+  if (S.error) setPill("conn", "bad", S.error);
+  document.getElementById("log").innerHTML = (S.log.length ? S.log : ["(events appear here)"]).slice().reverse().join("<br>") +
+    sides.flatMap(s => S.hands[s].events.map(e => `<br><span style="color:var(--serious)">▲ guard: ${e}</span>`)).join("");
+}
+
+// ---------------------------------------------------------------- current charts
+function niceMax(v) { const p = Math.pow(10, Math.floor(Math.log10(v))); for (const m of [1, 2, 2.5, 5, 10]) if (m * p >= v) return m * p; return v; }
+function yMax(side) {
+  let m = S ? S.stall_current * 1.15 : 700;
+  for (const r of hist[side]) for (const v of r.c) if (v > m) m = v;
+  return niceMax(m);
+}
+function draw() {
+  for (const side of sides) {
+    const cv = document.getElementById("cv-" + side); if (!cv) continue;
+    const dpr = devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+    const g = cv.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, W, H);
+    const L = 44, R = 8, T = 8, B = 22, pw = W - L - R, ph = H - T - B;
+    const ym = yMax(side), now = performance.now() / 1000;
+    const X = t => L + pw * (1 - (now - t) / WINDOW_S), Y = v => T + ph * (1 - v / ym);
+    g.font = "11px -apple-system, sans-serif"; g.fillStyle = css("--text-muted"); g.strokeStyle = css("--grid"); g.lineWidth = 1;
+    for (let k = 0; k <= 4; k++) {
+      const v = ym * k / 4, y = Math.round(Y(v)) + .5;
+      g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke();
+      g.textAlign = "right"; g.textBaseline = "middle"; g.fillText(v.toFixed(0), L - 6, y);
+    }
+    g.textAlign = "center"; g.textBaseline = "top";
+    for (let s = 0; s <= WINDOW_S; s += 2) g.fillText(s === 0 ? "now" : `-${s}s`, L + pw * (1 - s / WINDOW_S), H - B + 6);
+    if (S) {   // stall threshold
+      const y = Y(S.stall_current); g.save(); g.setLineDash([5, 4]); g.strokeStyle = css("--serious"); g.lineWidth = 1.5;
+      g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke(); g.restore();
+    }
+    const H_ = hist[side];
+    if (!H_.length) { g.fillStyle = css("--text-muted"); g.textAlign = "center"; g.textBaseline = "middle";
+      g.fillText(S && !S.hands[side].current ? "no current telemetry from this backend" : "waiting for data…", L + pw / 2, T + ph / 2); continue; }
+    g.lineWidth = 2; g.lineJoin = "round";
+    for (let i = 0; i < 6; i++) {
+      g.strokeStyle = css(SERIES[i]); g.beginPath();
+      H_.forEach((r, k) => { const x = X(r.t), y = Y(r.c[i]); k ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke();
+    }
+    const hv = hover[side];
+    if (hv != null && hv >= L) {
+      const t = now - (1 - (hv - L) / pw) * WINDOW_S;
+      let best = H_[0]; for (const r of H_) if (Math.abs(r.t - t) < Math.abs(best.t - t)) best = r;
+      const x = X(best.t); g.strokeStyle = css("--axis"); g.lineWidth = 1; g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke();
+      for (let i = 0; i < 6; i++) { g.fillStyle = css(SERIES[i]); g.strokeStyle = css("--surface-1"); g.lineWidth = 2;
+        g.beginPath(); g.arc(x, Y(best.c[i]), 4, 0, 7); g.fill(); g.stroke(); }
+      const tip = document.getElementById("tip-" + side);
+      tip.innerHTML = `<div class="muted">${(now - best.t).toFixed(1)} s ago</div>` + JOINT_LABELS.map((n, i) =>
+        `<div><span style="display:inline-flex;gap:6px;align-items:center"><span class="sw" style="background:var(${SERIES[i]})"></span>${n}</span><b>${best.c[i].toFixed(0)} mA</b></div>`).join("");
+      tip.style.display = "block";
+      const left = Math.min(x + 12, W - tip.offsetWidth - 4); tip.style.left = left + "px"; tip.style.top = (T + 18) + "px";
+    }
+  }
+  requestAnimationFrame(draw);
+}
+const hover = {};
+function setupHover(side) {
+  const cv = document.getElementById("cv-" + side);
+  cv.addEventListener("pointermove", e => hover[side] = e.offsetX);
+  cv.addEventListener("pointerleave", () => { hover[side] = null; document.getElementById("tip-" + side).style.display = "none"; });
+}
+
+// ---------------------------------------------------------------- controls
+document.getElementById("estop").onclick = () => send({ type: S && S.estopped ? "resume" : "estop" });
+document.getElementById("mirror").onclick = () => send({ type: "mirror", on: !(S && S.mirror) });
+document.getElementById("rec").onclick = () => send({ type: "record", on: !(S && S.recording) });
+document.getElementById("speed").oninput = e => send({ type: "speed", v: +e.target.value });
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT" && e.target.type !== "range") return;
+  if (e.code === "Space") { e.preventDefault(); send({ type: S && S.estopped ? "resume" : "estop" }); drivingTeleop = false; return; }
+  if (!S) return;
+  if (e.key === "o" || e.key === "O") send({ type: "grasp", side: active, name: "open" });
+  const n = parseInt(e.key); if (n >= 1 && n <= 8 && S.grasps[n - 1]) send({ type: "grasp", side: active, name: S.grasps[n - 1] });
+});
+
+// ---------------------------------------------------------------- webcam teleop
+let camOn = false, drivingTeleop = false, capturing = null;
+let worker = null, busy = false, cameraSession = 0, seq = 0, panelRTT = null;
+let pingAt = 0;
+setInterval(() => {
+  if (ws && ws.readyState === 1) { pingAt = performance.now(); send({type: "ping", id: pingAt}); }
+}, 1000);
+function stopCam() {
+  cameraSession++;
+  camOn = false; drivingTeleop = false; busy = false; capturing = null;
+  send({type: "teleop_arm", on: false});
+  const video = document.getElementById("video");
+  if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
+  video.srcObject = null;
+  if (worker) worker.terminate(); worker = null;
+  const btn = document.getElementById("cam"); btn.textContent = "Start camera"; btn.disabled = false;
+}
+async function startCam() {
+  const btn = document.getElementById("cam"); btn.textContent = "Loading model…"; btn.disabled = true;
+  const session = ++cameraSession;
+  try {
+    worker = new Worker("/static/hand-worker.js");
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Model loading timed out. Check internet access.")), 30000);
+      worker.onerror = event => { clearTimeout(timer); reject(new Error(event.message)); };
+      worker.onmessage = ({data}) => { clearTimeout(timer); data.type === "ready" ? resolve() : reject(new Error(data.error)); };
+      worker.postMessage({type: "init"});
+    });
+    if (session !== cameraSession) return;
+    worker.onerror = event => { stopCam(); alert("Tracking stopped: " + event.message); };
+    worker.onmessage = ({data}) => {
+      busy = false;
+      if (session !== cameraSession) return;
+      if (data.type === "error") { stopCam(); alert("Tracking stopped: " + data.error); return; }
+      acceptTracking(data);
+    };
+    const video = document.getElementById("video");
+    video.srcObject = await navigator.mediaDevices.getUserMedia({audio: false,
+      video: {width: {ideal: 640}, height: {ideal: 480}, frameRate: {ideal: 30, max: 30}}});
+    await video.play();
+    camOn = true; btn.textContent = "Stop camera"; btn.disabled = false;
+    video.srcObject.getVideoTracks()[0].onended = stopCam;
+    let lastVideoTime = -1;
+    const schedule = () => video.requestVideoFrameCallback ? video.requestVideoFrameCallback(frame) : requestAnimationFrame(frame);
+    async function frame() {
+      if (!camOn || session !== cameraSession) return;
+      schedule();
+      if (busy || video.readyState < 2 || video.currentTime === lastVideoTime) return;
+      busy = true; lastVideoTime = video.currentTime;
+      const timestamp = performance.now();
+      try {
+        const bitmap = await createImageBitmap(video);
+        if (session !== cameraSession) { bitmap.close(); return; }
+        worker.postMessage({type: "frame", bitmap, timestamp}, [bitmap]);
+      } catch (error) { stopCam(); alert("Camera frame failed: " + error); }
+    }
+    schedule();
+  } catch (error) { stopCam(); alert("Camera/model failed: " + error); }
+}
+function acceptTracking(data) {
+  const age = performance.now() - data.timestamp;
+  if (age > 200 || !camOn) return;
+  const ov = document.getElementById("overlay"), video = document.getElementById("video");
+  ov.width = video.videoWidth; ov.height = video.videoHeight;
+  const g = ov.getContext("2d");
+  const candidates = {};
+  for (const h of data.hands) {
+    let side = h.label === "left" ? "right" : "left";
+    if (document.getElementById("swap").checked) side = side === "left" ? "right" : "left";
+    const clipped = h.image.some(p => p.x < 0.01 || p.x > 0.99 || p.y < 0.01 || p.y > 0.99);
+    const good = h.score >= 0.8 && !clipped;
+    g.fillStyle = good ? css("--good") : css("--warning");
+    for (const p of h.image) { g.beginPath(); g.arc(p.x * ov.width, p.y * ov.height, 3, 0, 7); g.fill(); }
+    // Canvas is mirrored with the video, so counter-mirror the text to keep it readable.
+    const wrist = h.image[0];
+    g.save(); g.translate(wrist.x * ov.width, wrist.y * ov.height); g.scale(-1, 1);
+    g.font = "bold 16px sans-serif"; g.fillText(`${side}${good ? "" : " uncertain / clipped"}`, 0, -12); g.restore();
+    if (good) {
+      if (candidates[side]) candidates[side] = {ambiguous: true};
+      else candidates[side] = {points: h.points, score: h.score};
+    }
+  }
+  const hands = Object.fromEntries(Object.entries(candidates).filter(([, h]) => !h.ambiguous));
+  if (capturing && hands[capturing.side]) send({type: "calib", side: capturing.side,
+    pose: capturing.pose, kp: hands[capturing.side].points, score: hands[capturing.side].score});
+  // Drop observations under backpressure. Never queue camera frames or commands.
+  if (drivingTeleop && S && !S.estopped && ws && ws.readyState === 1 && ws.bufferedAmount === 0)
+    send({type: "teleop", seq: ++seq, panel_time: S.panel_time, age_ms: age,
+      inference_ms: data.inference_ms, hands: hands.right ? {right: hands.right} : {}});
+}
+document.getElementById("cam").onclick = () => camOn ? stopCam() : startCam();
+document.getElementById("drive").onclick = () => {
+  if (!camOn) { alert("Start the camera first."); return; }
+  if (!drivingTeleop && !(S && S.calibrated.right)) { alert("Calibrate the right hand first."); return; }
+  send({type: "teleop_arm", on: !drivingTeleop});
+};
+document.getElementById("swap").onchange = () => {
+  drivingTeleop = false; send({type: "teleop_arm", on: false});
+  for (const side of sides) send({type: "calib_reset", side});
+};
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { drivingTeleop = false; send({type: "teleop_arm", on: false}); }
+});
+window.addEventListener("pagehide", stopCam);
+function buildCalib() {
+  document.getElementById("calib").innerHTML = sides.map(s => `
+    <div class="row"><b style="width:52px">${s}</b>
+      <button data-c="${s}:open">Capture open</button><button data-c="${s}:fist">Capture fist</button><button data-c="${s}:pinch">Capture thumb pinch</button>
+      <button data-cr="${s}">Reset</button><span class="muted" id="cal-${s}"></span></div>`).join("");
+  document.querySelectorAll("[data-c]").forEach(b => b.onclick = () => {
+    if (!camOn) { alert("Start the camera first."); return; }
+    send({type: "teleop_arm", on: false});
+    const [side, pose] = b.dataset.c.split(":");
+    send({type: "calib_begin", side, pose});
+    const capture = {side, pose}; capturing = capture; b.classList.add("on");
+    setTimeout(() => { if (capturing === capture) capturing = null; b.classList.remove("on"); }, 1000);
+  });
+  document.querySelectorAll("[data-cr]").forEach(b => b.onclick = () => send({ type: "calib_reset", side: b.dataset.cr }));
+}
+function updateCalib() {
+  for (const s of sides) {
+    const el = document.getElementById("cal-" + s); if (!el) continue;
+    const c = S.calib_counts[s];
+    el.textContent = S.calibrated[s] ? `calibrated (${c.open} open, ${c.fist} fist frames)${S.thumb_calibrated[s] ? "" : " · thumb uses default range"}` :
+      `default calibration · ${c.open} open / ${c.fist} fist frames`;
+  }
+}
+
+connect();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+# Robot configuration. Values marked TODO must be measured or confirmed on the real unit.
+
+# Revo2 Basic: one USB-RS485 adapter per hand, 460800 baud, default ids left 0x7E / right 0x7F.
+# TODO: confirm the ports. Use udev rules so they don't swap across reboots (docs/hardware.md).
+hand_server: ws://192.168.123.164:8765/ws   # where the Mac panel finds the hand server (R1 Jetson)
+hand_transport: sdk    # sdk = direct bc-stark-sdk | dds = Unitree brainco_hand_service bridge (xr_teleoperate)
+hands:
+  # R1 hand board: FTDI FT4232H quad RS485 (serial FTB3Y7V2) -> /dev/ttyUSB0..3, fixed channel order.
+  # 2026-10-14: right hand (Revo2Basic, SN BCXRR2180J2600005, fw 1.0.22) answers on ttyUSB1 @ 0x7F.
+  # Left hand not connected yet: run scripts/revo2_scan.py when it is and fill in its port.
+  left:  {port: null, slave_id: 126}
+  right: {port: /dev/ttyUSB1, slave_id: 127}
+
+body:
+  network_interface: eth10     # R1 development computer (192.168.123.164), checked 2026-10-14
+  rate_hz: 250
+  release_s: 2.0               # arm_sdk weight ramp when handing arms back to the built-in controller
+  gains:                       # [kp, kd]. Starting values; verify gently on the robot
+    arm: [60.0, 1.5]
+    waist: [150.0, 3.0]
+    head: [20.0, 0.5]
+
+hand_limits:
+  max_rate: 2.0          # normalized/s
+  stall_current: 600.0   # mA. TODO: set from the level-1 telemetry audit (scripts/l1_hand_check.py --audit)
+  stall_s: 1.5
+  max_temp: 65.0
+
+body_limits:
+  margin: 0.05           # rad inside URDF limits
+  max_dq_per_s: 1.5
+  watchdog_s: 0.5
+
+# Palm frame offset in wrist_roll_link coordinates (adapter + Revo2 palm centre). TODO: measure.
+tool_xyz: [0.13, 0.0, 0.0]
