@@ -204,16 +204,30 @@ def test_failed_hold_does_not_block_stop_or_reissue_old_target():
             runner.close()
 
 
-def test_separate_thumb_calibration_maps_pinch_endpoint():
+def test_separate_thumb_calibration_maps_fold_endpoint():
     opened = _synthetic_hand(0.05)
-    pinched = opened.copy()
-    pinched[1:5] = [[0.03, 0.03, 0], [0.05, 0.03, -0.02],
-                    [0.05, 0.03, -0.04], [0.04, 0.03, -0.05]]
-    validate_landmarks(pinched)
+    folded = opened.copy()   # thumb bent across the palm, tip near the pinky MCP
+    folded[1:5] = [[0.03, 0.03, 0], [0.05, 0.02, -0.02],
+                   [0.07, -0.01, -0.025], [0.08, -0.035, -0.02]]
+    validate_landmarks(folded)
     r = HandRetargeter(smooth=0)
-    r.calibrate_thumb([opened] * 6, [pinched] * 6)
+    r.calibrate_thumb([opened] * 6, [folded] * 6)
     np.testing.assert_allclose(r(opened)[:2], 0, atol=1e-5)
-    np.testing.assert_allclose(r(pinched)[:2], 1, atol=1e-5)
+    np.testing.assert_allclose(r(folded)[:2], 1, atol=1e-5)
+    # Default (uncalibrated) map: the fold is read as a fully opposed thumb, the open hand is not.
+    d = HandRetargeter(smooth=0)
+    assert d(folded)[1] > 0.95 and d(opened)[1] < 0.1
+
+
+def test_thumb_opposition_is_mirror_and_view_invariant():
+    from scipy.spatial.transform import Rotation
+    folded = _synthetic_hand(0.05)
+    folded[1:5] = [[0.03, 0.03, 0], [0.05, 0.02, -0.02], [0.07, -0.01, -0.025], [0.08, -0.035, -0.02]]
+    base = hand_features(folded)
+    left = folded * [-1.0, 1.0, 1.0]
+    turned = folded @ Rotation.from_euler("xyz", [40, -25, 70], degrees=True).as_matrix().T * 1.3
+    np.testing.assert_allclose(hand_features(left), base, atol=1e-9)
+    np.testing.assert_allclose(hand_features(turned), base, atol=1e-5)
 
 
 def test_panel_websocket_disconnect_and_recording_lifecycle(tmp_path, monkeypatch):

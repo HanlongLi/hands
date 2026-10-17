@@ -70,7 +70,7 @@ class Panel:
             self.grasps.update(yaml.safe_load(GRASP_FILE.read_text()) or {})
         self.mirror = False
         self.retarget = {s: HandRetargeter(smooth=0.6) for s in sides}
-        self.calib = {s: {"open": [], "fist": [], "pinch": []} for s in sides}
+        self.calib = {s: {"open": [], "fist": [], "thumb": []} for s in sides}
         self.calibrated = {s: False for s in sides}
         self.live = {s: LiveHand(self.retarget[s]) for s in sides}
         self.teleop_armed = False
@@ -78,6 +78,7 @@ class Panel:
         self.teleop_seq = -1
         self.teleop_t = 0.0
         self.teleop_metrics = {}
+        self.teleop_side = "right" if "right" in sides else sides[0]  # robot hand the webcam drives
         self.thumb_calibrated = {s: False for s in sides}
         self.preview = HandPreview(model)
         self.task_service = TaskService(REPO / "logs" / "tasks", renderer=task_renderer)
@@ -99,8 +100,8 @@ class Panel:
         was_armed = self.teleop_armed
         self.teleop_armed = False
         self.teleop_owner = None
-        if was_armed and "right" in self.runner.sides:
-            self.runner.hold("right")
+        if was_armed and self.teleop_side in self.runner.sides:
+            self.runner.hold(self.teleop_side)
         for live in self.live.values():
             live.reset()
 
@@ -109,11 +110,21 @@ class Panel:
         if t == "preview":
             if m.get("source") == "replay" and self.teleop_armed:
                 raise ValueError("Disarm live control before preview replay")
-            accepted = self.preview.update(m, profile(self.retarget.get("right", HandRetargeter())))
+            # Replayed clips are right-hand mapping data; the live preview follows the driven side.
+            side = "right" if m.get("source") == "replay" else self.teleop_side
+            accepted = self.preview.update(m, profile(self.retarget.get(side, HandRetargeter())))
             if accepted and self.task_service.mapping_enabled and m.get("source", "live") == "live":
                 observation = m.get("hand")
                 self.task_service.set_target(self.preview.target, source="mapping",
                     valid=self.preview.live.status == "tracking", landmarks=observation.get("points") if observation else None)
+            return
+        if t == "teleop_side":
+            if m["side"] not in self.runner.sides:
+                raise ValueError(f"No {m['side']} hand is served")
+            if owner is not self.teleop_owner and self.teleop_armed:
+                raise ValueError("Teleop is controlled by another browser")
+            self.disarm_teleop()
+            self.teleop_side = m["side"]
             return
         if t == "teleop_arm":
             if m.get("on"):
@@ -121,8 +132,8 @@ class Panel:
                     raise ValueError("Stop task mapping input before arming robot teleop")
                 if self.teleop_armed and owner is not self.teleop_owner:
                     raise ValueError("Teleop is controlled by another browser")
-                if not self.calibrated.get("right", False):
-                    raise ValueError("Calibrate the right hand open and fist before driving")
+                if not self.calibrated.get(self.teleop_side, False):
+                    raise ValueError(f"Calibrate the {self.teleop_side} hand open and fist before driving")
                 if self.runner.estopped:
                     raise ValueError("Resume before arming teleop")
                 self.disarm_teleop()
@@ -185,7 +196,7 @@ class Panel:
             self.teleop_metrics = {"frame_age_ms": age, "inference_ms": m.get("inference_ms")}
             accepted = False
             for side, live in self.live.items():
-                if side != "right":
+                if side != self.teleop_side:
                     continue
                 obs = m.get("hands", {}).get(side)
                 if obs is None or not self.calibrated[side]:
@@ -214,15 +225,15 @@ class Panel:
             self.calib[side][pose].append(kp)
             self.calib[side][pose] = self.calib[side][pose][-60:]
             c = self.calib[side]
-            if pose != "pinch" and len(c["open"]) >= 5 and len(c["fist"]) >= 5:
+            if pose != "thumb" and len(c["open"]) >= 5 and len(c["fist"]) >= 5:
                 valid = self.retarget[side].calibrate(np.array(c["open"][-30:]), np.array(c["fist"][-30:]))
                 self.thumb_calibrated[side] = bool(valid[:2].all())
                 self.calibrated[side] = True
-            if len(c["open"]) >= 5 and len(c["pinch"]) >= 5:
-                self.retarget[side].calibrate_thumb(c["open"], c["pinch"])
+            if len(c["open"]) >= 5 and len(c["thumb"]) >= 5:
+                self.retarget[side].calibrate_thumb(c["open"], c["thumb"])
                 self.thumb_calibrated[side] = True
         elif t == "calib_reset":
-            self.calib[m["side"]] = {"open": [], "fist": [], "pinch": []}
+            self.calib[m["side"]] = {"open": [], "fist": [], "thumb": []}
             self.retarget[m["side"]] = HandRetargeter(smooth=0.6)
             self.calibrated[m["side"]] = False
             self.live[m["side"]] = LiveHand(self.retarget[m["side"]])
@@ -276,6 +287,12 @@ class Panel:
 
     # ------------------------------------------------------------ state to the browser
     def snapshot(self) -> dict:
+        if self.link is not None and self.link.state.get("estopped") and not self.runner.estopped:
+            # The hand server stays E-stopped across panel restarts; adopt its state so the UI
+            # shows the stop and Space sends resume, instead of commands being silently ignored.
+            self.runner.estop()
+            self.disarm_teleop()
+            self.note("hand server is E-stopped: press Space to resume")
         snap = self.runner.snapshot()
         conn = {"backend": self.backend, "url": self.url, "ok": True, "rate": None}
         if self.link is not None:
@@ -283,7 +300,7 @@ class Panel:
             conn.update(ok=self.link.connected and time.monotonic() - self.link.last_rx < 0.3, rate=self.link.rate_hz, rtt_ms=self.link.rtt_ms)
         return {**snap, "task": self.task_service.snapshot(), "preview": self.preview.snapshot(),
                 "retarget_profile": profile(self.retarget.get("right", HandRetargeter())),
-                "panel_time": time.monotonic(), "teleop_armed": self.teleop_armed,
+                "panel_time": time.monotonic(), "teleop_armed": self.teleop_armed, "teleop_side": self.teleop_side,
                 "tracking": {s: (v.status if v.last_t is not None and time.monotonic() - v.last_t < 0.25
                                  else "waiting") for s, v in self.live.items()},
                 "teleop_metrics": self.teleop_metrics, "thumb_calibrated": self.thumb_calibrated,

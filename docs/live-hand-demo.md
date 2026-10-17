@@ -1,6 +1,7 @@
-# Live right-hand demo
+# Live webcam hand demo
 
-This demo uses the MacBook camera to drive the robot's **right Revo2 hand**. Camera images
+This demo uses the MacBook camera to drive **one Revo2 hand, left or right**, chosen with the
+**Drive** selector (default right). Your left hand drives the left robot hand; your right hand drives the right. Camera images
 stay in the browser; only 21 3D landmarks per detected hand leave it for the local Python panel.
 Tracking uses pinned MediaPipe Tasks Vision 0.10.14 in a Web Worker. The JavaScript, WASM
 and hand model are included in the repository and served by the local panel: **camera startup
@@ -14,6 +15,11 @@ Chrome with a synthetic camera. Real-hand mapping, camera accuracy and physical 
 still require the bench evaluation below.
 
 ## Run
+
+For the left hand, serve and show it (`--sides left`, or omit `--sides` for both), then pick
+**Drive: left hand** before calibrating. Everything below applies with "right" replaced by "left".
+Changing the selector disarms. The 3D preview shows the driven hand's mapped values on the
+right-hand Revo2 model (the joint values are identical); recorded mapping clips stay right-hand only.
 
 From a source checkout with the project extras installed:
 
@@ -45,8 +51,9 @@ On the Mac:
 3. Hold an open palm, click **Capture open**, and hold for one second. Repeat with a fist.
    Keep the whole hand inside the image, including fingertips. Failed or collapsed calibration
    is rejected. Calibrate again after changing operator or viewpoint substantially.
-4. For the thumb, capture a thumb–index pinch with visible thumb bend and opposition.
-   If those two features did not change enough, the capture is rejected. The UI identifies when
+4. For the thumb, keep the fingers open, fold the thumb across the palm toward the pinky base
+   and click **Capture thumb fold**. This is the robot's fully folded thumb (thumb = thumb_aux = 1).
+   If the thumb did not bend and cross the palm enough, the capture is rejected. The UI identifies when
    the thumb still uses its default range. Calibration is session-local.
 5. Click **Arm right-hand demo**. Three consecutive valid observations acquire tracking.
    Slowly open and close the hand, then move each finger separately. The left robot hand
@@ -62,8 +69,10 @@ The Revo2 has one coupled actuator per finger and two thumb actuators. It cannot
 independent MCP/PIP/DIP angles, finger spread, or wrist rotation. The mapper sums finger
 flexion angles in a local palm frame, then maps operator open/closed endpoints to normalized
 motor targets. This makes it invariant to rigid hand rotation, translation and scale; it is not
-a task-space fingertip optimizer. Thumb flexion/opposition can be calibrated separately with
-a pinch rather than inferred entirely from a fist.
+a task-space fingertip optimizer. Thumb opposition (`thumb_aux`) is how far the thumb tip has
+crossed the palm from the index MCP toward the pinky MCP, in palm widths. It is measured in the
+palm plane because monocular depth is least reliable when the thumb crosses a camera-facing palm.
+Thumb flexion/opposition are calibrated separately with a thumb fold rather than inferred from a fist.
 
 The result passes through a time-aware One Euro filter (default minimum cutoff 1.5 Hz,
 beta 0.7), then the existing rate/stall guard. This trades steady-pose jitter against response

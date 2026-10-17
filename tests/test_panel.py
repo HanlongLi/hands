@@ -66,3 +66,42 @@ def test_panel_teleop_and_calibration(tmp_path, monkeypatch):
         assert p.snapshot()["teleop_live"]
     finally:
         p.runner.close()
+
+
+def test_panel_teleop_left_hand(tmp_path, monkeypatch):
+    p = _panel(tmp_path, monkeypatch)
+    mirror = np.array([-1.0, 1.0, 1.0])  # an anatomical left hand is a reflected right hand
+    try:
+        p.handle({"type": "teleop_side", "side": "left"})
+        for _ in range(6):
+            p.handle({"type": "calib", "side": "left", "pose": "open", "kp": (_synthetic_hand(0.05) * mirror).tolist()})
+            p.handle({"type": "calib", "side": "left", "pose": "fist", "kp": (_synthetic_hand(1.0) * mirror).tolist()})
+        assert p.calibrated["left"] and not p.calibrated["right"]
+        p.handle({"type": "teleop_arm", "on": True})
+        assert p.teleop_armed and p.snapshot()["teleop_side"] == "left"
+        right_before = p.runner.target["right"].copy()
+        for seq in range(3):
+            p.handle({"type": "teleop", "seq": seq, "age_ms": 10, "panel_time": time.monotonic(),
+                      "hands": {"left": {"points": (_synthetic_hand(1.0) * mirror).tolist(), "score": 0.99},
+                                "right": {"points": _synthetic_hand(1.0).tolist(), "score": 0.99}}})
+        assert p.runner.target["left"][2:].min() > 0.95
+        np.testing.assert_equal(p.runner.target["right"], right_before)  # only the selected hand moves
+        p.handle({"type": "teleop_side", "side": "right"})  # switching sides disarms
+        assert not p.teleop_armed
+    finally:
+        p.runner.close()
+
+
+def test_panel_adopts_hand_server_estop(tmp_path, monkeypatch):
+    class Link:
+        state, connected, last_rx, rate_hz, rtt_ms, url = {"estopped": True}, True, 0.0, None, None, None
+        def send(self, msg): pass
+    p = _panel(tmp_path, monkeypatch)
+    try:
+        p.link = Link()
+        assert p.snapshot()["estopped"]
+        p.link.state = {"estopped": False}
+        p.handle({"type": "resume"})
+        assert not p.snapshot()["estopped"]
+    finally:
+        p.runner.close()

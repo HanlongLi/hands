@@ -105,7 +105,7 @@ scripts/                        l1_hand_check.py, revo2_scan.py, deploy_jetson.s
 ## Verified vs. not
 
 - Verified:
-  - 47 Python tests pass (mock + sim): guard rate limit and stall latch, IK, retargeting, code-as-policy loop
+  - 50 Python tests pass (mock + sim): guard rate limit and stall latch, IK, retargeting, code-as-policy loop
     (with a fake client), panel commands/teleop/recording, the hand server ↔ remote panel path,
     mapping datasets, and simulated task episodes/training. Browser smoke checks cover camera startup,
     mapping review, 3D preview, task recording/download and tab layout.
@@ -123,9 +123,9 @@ scripts/                        l1_hand_check.py, revo2_scan.py, deploy_jetson.s
 
 ## Live webcam hand demo
 
-The right-hand demo now includes worker-based MediaPipe tracking, checked open/fist and optional
+The webcam demo drives either hand (a **Drive** selector; left hand → left robot hand). It includes worker-based MediaPipe tracking, checked open/fist and optional
 thumb-pinch calibration, adaptive smoothing, explicit arm/disarm, tracking-loss holds, and expiring
-network commands. Start locally with `r1h-panel --backend mock --sides right`.
+network commands. Start locally with `r1h-panel --backend mock` (both hands), or `--sides left`.
 See [the demo guide](docs/live-hand-demo.md) for operation, timing semantics, hardware validation,
 and acceptance targets. Camera accuracy and physical response latency still need bench measurement.
 

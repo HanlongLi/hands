@@ -7,9 +7,10 @@ hand_transport: sdk    # sdk = direct bc-stark-sdk | dds = Unitree brainco_hand_
 hands:
   # R1 hand board: FTDI FT4232H quad RS485 (serial FTB3Y7V2) -> /dev/ttyUSB0..3, fixed channel order.
   # 2026-10-14: right hand (Revo2Basic, SN BCXRR2180J2600005, fw 1.0.22) answers on ttyUSB1 @ 0x7F.
-  # Left hand not connected yet: run scripts/revo2_scan.py when it is and fill in its port.
-  left:  {port: null, slave_id: 126}
-  right: {port: /dev/ttyUSB1, slave_id: 127}
+  # 2026-10-17: left hand (Revo2Basic, SN BCXRL2180J260000D, fw 1.0.22.U) answers on ttyUSB1 @ 0x7E;
+  # the right hand answered on no port in that scan (same channel as before: cable likely moved).
+  left:  {port: /dev/ttyUSB1, slave_id: 126}
+  right: {port: /dev/ttyUSB1, slave_id: 127}  # re-scan once the right hand is reconnected
 
 body:
   network_interface: eth10     # R1 development computer (192.168.123.164), checked 2026-10-14

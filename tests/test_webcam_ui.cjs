@@ -47,6 +47,12 @@ assert.deepEqual(sent.at(-1).hands, {}, 'uncertain identity must not move a hand
 context.result = {timestamp:990, inference_ms:8, hands:[hand, hand]};
 vm.runInContext('acceptTracking(result)', context);
 assert.deepEqual(sent.at(-1).hands, {}, 'duplicate anatomical labels are ambiguous');
+// Selecting the left robot hand routes the anatomical left hand (shown mirrored) only.
+vm.runInContext('S.teleop_side = "left"', context);
+context.result = {timestamp:990, inference_ms:8, hands:[{...hand, label:'right'}, hand]};
+vm.runInContext('acceptTracking(result)', context);
+assert.deepEqual(Object.keys(sent.at(-1).hands), ['left']);
+vm.runInContext('S.teleop_side = "right"', context);
 vm.runInContext('ws.onclose()', context);
 assert.equal(vm.runInContext('drivingTeleop', context), false);
 console.log('Webcam UI contracts passed');

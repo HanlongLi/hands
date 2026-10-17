@@ -164,12 +164,13 @@ canvas { width: 100%; height: 170px; display: block; }
       <div class="tele-controls">
         <div class="row" style="margin-top:0">
           <button id="cam">Start camera</button>
+          <label class="ctl">Drive <select id="tele-side"><option value="right">right hand</option></select></label>
           <button id="drive">Arm right-hand demo</button>
           <label class="ctl"><input type="checkbox" id="swap"> Swap left/right</label>
         </div>
-        <p class="muted">The 3D preview follows the camera without arming; calibration improves its mapping. Right-hand demo: show your right palm and confirm the overlay says “right”. Use Swap if needed. The preview is mirrored.
+        <p class="muted">The 3D preview follows the camera without arming; calibration improves its mapping. Choose which robot hand to drive, show that same hand (left drives left, right drives right) and confirm the overlay label matches. Use Swap if needed. The preview is mirrored.
           Calibrate each hand once: hold it fully open and press “open”, then make a fist and press “fist”
-          (each captures 1 s of frames). Capture a thumb–index pinch to tune thumb bend and opposition separately. Keep the full hand visible. Three valid frames acquire tracking; tracking loss holds the measured pose within 250 ms on the Mac. Space stops and disarms. Finger spread and wrist motion are not reproduced.</p>
+          (each captures 1 s of frames). Then, with the fingers open, fold the thumb across the palm toward the pinky base and press “thumb fold”: this is the robot's fully folded thumb. Keep the full hand visible. Three valid frames acquire tracking; tracking loss holds the measured pose within 250 ms on the Mac. Space stops and disarms. Finger spread and wrist motion are not reproduced.</p>
         <p id="tele-metrics" class="muted">Tracking: waiting · inference: — · frame age: — · panel RTT: —</p>
         <div id="calib"></div>
         <div class="row">
@@ -324,6 +325,7 @@ function build() {
     setupHover(side);
   }
   setActive(sides.includes("right") ? "right" : sides[0]);
+  document.getElementById("tele-side").innerHTML = sides.map(s => `<option value="${s}">${s} hand</option>`).join("");
   buildCalib();
 }
 
@@ -373,13 +375,15 @@ function update() {
 
   drivingTeleop = !!S.teleop_armed;
   document.getElementById("drive").classList.toggle("on", drivingTeleop);
-  document.getElementById("drive").textContent = drivingTeleop ? "Disarm / hold" : "Arm right-hand demo";
+  const teleSide = S.teleop_side || "right", sideSel = document.getElementById("tele-side");
+  document.getElementById("drive").textContent = drivingTeleop ? "Disarm / hold" : `Arm ${teleSide}-hand demo`;
+  if (document.activeElement !== sideSel) sideSel.value = teleSide;
   const tl = S.teleop_live && drivingTeleop;
   setPill("tele-status", tl ? "ok" : "warn", tl ? "● driving" : (camOn ? "camera on, not driving" : "off"));
   const metrics = S.teleop_metrics || {};
   const fmt = n => Number.isFinite(n) ? `${n.toFixed(0)} ms` : "—";
   document.getElementById("tele-metrics").textContent =
-    `Right: ${(S.tracking || {}).right || "waiting"} · inference: ${fmt(metrics.inference_ms)} · frame age: ${fmt(metrics.frame_age_ms)} · panel RTT: ${fmt(panelRTT)} · robot RTT: ${fmt(S.conn.rtt_ms)}`;
+    `${teleSide[0].toUpperCase() + teleSide.slice(1)}: ${(S.tracking || {})[teleSide] || "waiting"} · inference: ${fmt(metrics.inference_ms)} · frame age: ${fmt(metrics.frame_age_ms)} · panel RTT: ${fmt(panelRTT)} · robot RTT: ${fmt(S.conn.rtt_ms)}`;
   updateCalib();
   if (S.error) setPill("conn", "bad", S.error);
   document.getElementById("log").innerHTML = (S.log.length ? S.log : ["(events appear here)"]).slice().reverse().join("<br>") +
@@ -556,22 +560,27 @@ function acceptTracking(data, options = {}) {
   if (!replay && capturing && hands[capturing.side]) send({type: "calib", side: capturing.side,
     pose: capturing.pose, kp: hands[capturing.side].points, score: hands[capturing.side].score});
   const writable = ws && ws.readyState === 1 && ws.bufferedAmount === 0;
+  const driveSide = (S && S.teleop_side) || "right";
   // The preview is read-only; it uses an independent server-side mapper.
   if (ws && ws.readyState === 1 && (replay || writable))
     send({type: "preview", source: replay ? "replay" : "live",
       stream: replay ? options.stream : `camera-${previewPageId}-${cameraSession}`,
       seq: replay ? options.index : ++previewSeq, sample_time: data.timestamp / 1000,
-      hand: hands.right || null, profile: options.profile});
+      hand: (replay ? hands.right : hands[driveSide]) || null, profile: options.profile});
   // Drop observations under backpressure. Never queue camera frames or commands.
   if (!replay && drivingTeleop && S && !S.estopped && writable)
     send({type: "teleop", seq: ++seq, panel_time: S.panel_time, age_ms: age,
-      inference_ms: data.inference_ms, hands: hands.right ? {right: hands.right} : {}});
+      inference_ms: data.inference_ms, hands: hands[driveSide] ? {[driveSide]: hands[driveSide]} : {}});
 }
 document.getElementById("cam").onclick = () => camOn ? stopCam() : startCam();
 document.getElementById("drive").onclick = () => {
   if (!camOn) { alert("Start the camera first."); return; }
-  if (!drivingTeleop && !(S && S.calibrated.right)) { alert("Calibrate the right hand first."); return; }
+  const side = (S && S.teleop_side) || "right";
+  if (!drivingTeleop && !(S && S.calibrated[side])) { alert(`Calibrate the ${side} hand first.`); return; }
   send({type: "teleop_arm", on: !drivingTeleop});
+};
+document.getElementById("tele-side").onchange = event => {
+  drivingTeleop = false; send({type: "teleop_side", side: event.target.value});
 };
 document.getElementById("swap").onchange = () => {
   drivingTeleop = false; send({type: "teleop_arm", on: false});
@@ -585,7 +594,7 @@ window.addEventListener("pagehide", stopCam);
 function buildCalib() {
   document.getElementById("calib").innerHTML = sides.map(s => `
     <div class="row"><b style="width:52px">${s}</b>
-      <button data-c="${s}:open">Capture open</button><button data-c="${s}:fist">Capture fist</button><button data-c="${s}:pinch">Capture thumb pinch</button>
+      <button data-c="${s}:open">Capture open</button><button data-c="${s}:fist">Capture fist</button><button data-c="${s}:thumb">Capture thumb fold</button>
       <button data-cr="${s}">Reset</button><span class="muted" id="cal-${s}"></span></div>`).join("");
   document.querySelectorAll("[data-c]").forEach(b => b.onclick = () => {
     if (!camOn) { alert("Start the camera first."); return; }

@@ -40,18 +40,19 @@ def _bend(kp, chain):
 
 
 def hand_features(kp: np.ndarray) -> np.ndarray:
-    """(21,3) keypoints -> raw features in HAND_JOINTS order (all radians)."""
+    """(21,3) keypoints -> raw features in HAND_JOINTS order (radians, except thumb_aux in palm widths)."""
     kp = np.asarray(kp, float).reshape(21, 3)
     # Palm frame: x from wrist to middle MCP, normal from the index/pinky MCP spread.
     x = _unit(kp[9] - kp[0])
     n = _unit(np.cross(kp[5] - kp[0], kp[17] - kp[0]))
     thumb_flex = _bend(kp, THUMB_FLEX_CHAIN)
-    # Thumb aux (rotation toward the palm): angle of the thumb metacarpal out of the palm plane,
-    # plus its swing toward the palm axis. Opposition raises both.
-    tm = _unit(kp[2] - kp[1])
-    out_of_plane = np.arcsin(np.clip(abs(tm @ n), 0, 1))
-    swing = np.arccos(np.clip(tm @ x, -1, 1))
-    thumb_aux = out_of_plane + 0.5 * (np.pi / 2 - swing)
+    # Thumb aux (rotation toward the palm): how far the thumb tip has crossed the palm, from the
+    # index MCP toward the pinky MCP, in palm widths (~-0.8 abducted, ~1 folded onto the pinky base).
+    # It stays in the palm plane, so it does not rely on monocular depth, which is weakest exactly
+    # when the thumb crosses in front of a camera-facing palm.
+    across = kp[17] - kp[5]
+    lateral = _unit(across - (across @ x) * x)
+    thumb_aux = (kp[4] - kp[5]) @ lateral / (np.linalg.norm(across) + 1e-9)
     feats = [thumb_flex, thumb_aux] + [_bend(kp, FINGER_CHAINS[f]) for f in ("index", "middle", "ring", "pinky")]
     return np.array(feats)
 
@@ -59,8 +60,8 @@ def hand_features(kp: np.ndarray) -> np.ndarray:
 @dataclass
 class HandRetargeter:
     """Linear map from features to [0,1]. Defaults are typical adult values; run `calibrate` per operator."""
-    open_feat: np.ndarray = field(default_factory=lambda: np.array([0.35, 0.30, 0.25, 0.25, 0.25, 0.30]))
-    fist_feat: np.ndarray = field(default_factory=lambda: np.array([1.30, 1.10, 3.30, 3.40, 3.40, 3.30]))
+    open_feat: np.ndarray = field(default_factory=lambda: np.array([0.35, -0.60, 0.25, 0.25, 0.25, 0.30]))
+    fist_feat: np.ndarray = field(default_factory=lambda: np.array([1.30, 0.70, 3.30, 3.40, 3.40, 3.30]))
     smooth: float = 0.5            # EMA factor, 0 = no smoothing
     _prev: np.ndarray | None = None
 
@@ -81,13 +82,13 @@ class HandRetargeter:
         self.reset()
         return valid
 
-    def calibrate_thumb(self, open_kps, pinch_kps):
-        """Calibrate thumb flexion/opposition separately using an open palm and a pinch."""
+    def calibrate_thumb(self, open_kps, fold_kps):
+        """Calibrate thumb flexion/opposition separately: open palm vs. thumb folded across the palm."""
         opened = np.median([hand_features(k) for k in open_kps], axis=0)[:2]
-        pinched = np.median([hand_features(k) for k in pinch_kps], axis=0)[:2]
-        if not (np.abs(pinched - opened) > 0.15).all():
-            raise ValueError("Pinch must visibly change both thumb bend and opposition")
-        self.open_feat[:2], self.fist_feat[:2] = opened, pinched
+        folded = np.median([hand_features(k) for k in fold_kps], axis=0)[:2]
+        if not (folded - opened > 0.15).all():
+            raise ValueError("Thumb fold must visibly bend the thumb and move its tip across the palm")
+        self.open_feat[:2], self.fist_feat[:2] = opened, folded
         self.reset()
 
     def __call__(self, kp: np.ndarray) -> np.ndarray:
